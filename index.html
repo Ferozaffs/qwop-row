@@ -1,0 +1,1798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ROWP — a QWOP-style rowing disaster</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0a1522;font-family:'Segoe UI',system-ui,sans-serif;overscroll-behavior:none;touch-action:none;-webkit-user-select:none;user-select:none;}
+  #c{display:block;width:100%;height:100%;}
+  .hud{position:fixed;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.7);user-select:none;pointer-events:none;}
+  #dist{top:18px;left:50%;transform:translateX(-50%);font-size:44px;font-weight:800;letter-spacing:1px;}
+  #dist small{font-size:20px;font-weight:400;opacity:.8;}
+  #time{top:70px;left:50%;transform:translateX(-50%);font-size:20px;opacity:.9;}
+  #pb{top:98px;left:50%;transform:translateX(-50%);font-size:14px;opacity:.65;}
+  #opp{top:24px;right:24px;font-size:18px;opacity:.9;background:rgba(0,0,0,.25);padding:6px 14px;border-radius:10px;display:none;}
+  #keys{bottom:18px;left:50%;transform:translateX(-50%);font-size:16px;opacity:.85;text-align:center;line-height:1.7;}
+  #keys b{display:inline-block;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:2px 10px;margin:0 3px;font-family:monospace;font-size:18px;}
+  #keys .lbl{opacity:.7;font-size:13px;}
+  #msg{top:34%;left:50%;transform:translate(-50%,-50%);font-size:70px;font-weight:900;text-align:center;line-height:1.25;opacity:0;transition:opacity .25s;}
+  #msg small{font-size:0.42em;}
+  #stroke{bottom:70px;left:50%;transform:translateX(-50%);font-size:13px;opacity:.6;}
+  #overlay{position:fixed;inset:0;background:rgba(5,15,28,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;transition:opacity .4s;overflow:auto;padding:20px;}
+  #overlay h1{font-size:60px;margin:0 0 6px;letter-spacing:6px;font-weight:900;}
+  #overlay h2{font-size:17px;font-weight:400;margin:0 0 26px;opacity:.8;}
+  #overlay .k{font-size:19px;line-height:2.1;}
+  #overlay .k b{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:3px 14px;margin:0 4px;font-family:monospace;font-size:23px;}
+  #overlay p{opacity:.65;font-size:13px;max-width:560px;line-height:1.6;}
+  #overlay button{font-size:19px;padding:11px 34px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;cursor:pointer;letter-spacing:2px;margin:6px;}
+  #overlay button:hover:not(:disabled){background:rgba(255,255,255,.25);}
+  #overlay button:disabled{opacity:.35;cursor:default;}
+  #modeRow{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+  #joinRow{display:flex;gap:8px;justify-content:center;margin-top:6px;}
+  #joinCode{font-size:20px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.3);color:#fff;text-transform:lowercase;width:190px;font-family:monospace;}
+  #mpPanel{display:none;flex-direction:column;align-items:center;margin-top:18px;}
+  #mpPanel.show{display:flex;}
+  #mpCode{font-family:monospace;font-size:44px;font-weight:800;letter-spacing:4px;color:#ffd76b;background:rgba(0,0,0,.35);padding:10px 30px;border-radius:12px;margin:6px 0 10px;}
+  #mpStatus{font-size:15px;opacity:.8;margin-bottom:12px;min-height:22px;}
+  .hidden{opacity:0;pointer-events:none;}
+  #overlay button:disabled{opacity:.45;cursor:default;}
+  #touch{position:fixed;inset:0;pointer-events:none;display:none;z-index:5;}
+  #touch button{position:fixed;bottom:24px;width:88px;height:88px;border-radius:50%;border:2px solid rgba(255,255,255,.5);background:rgba(255,255,255,.14);color:#fff;font-size:26px;font-weight:800;font-family:monospace;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;touch-action:manipulation;}
+  #touch button:active{background:rgba(255,255,255,.35);}
+  #bQ{left:16px;} #bW{left:112px;} #bO{right:112px;} #bP{right:16px;}
+  #bM{position:fixed;top:16px;right:16px;width:52px;height:52px;border-radius:12px;border:2px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;font-size:20px;pointer-events:auto;touch-action:none;display:none;z-index:6;}
+  @media (pointer: coarse){
+    #touch{display:block;}
+    #keys{display:none;}
+    #bM{display:block;}
+  }
+  #err{position:fixed;bottom:8px;left:8px;color:#ff9; font-size:12px; white-space:pre-wrap;z-index:99;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="dist" class="hud">0.0<small> / 100 m</small></div>
+<div id="time" class="hud">0.00 s</div>
+<div id="pb" class="hud"></div>
+<div id="opp" class="hud"></div>
+<div id="oppArrow" class="hud" style="top:50%;left:50%;font-size:30px;color:#ffe08a;display:none;">▲</div>
+<div id="stroke" class="hud"></div>
+<div id="msg" class="hud"></div>
+
+<div id="keys" class="hud">
+  <span class="lbl">LEFT OAR</span> <b>Q</b> ↻ <b>W</b> ↺
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <span class="lbl">RIGHT OAR</span> <b>O</b> ↻ <b>P</b> ↺
+  &nbsp;&nbsp;|&nbsp;&nbsp; <b>M</b> music
+</div>
+
+<div id="overlay">
+  <h1>R O W P</h1>
+  <h2>steer between the yellow buoys to finish. seagulls bite.</h2>
+  <div class="k">
+    <b>Q</b>/<b>W</b> spin left oar &nbsp;&nbsp; <b>O</b>/<b>P</b> spin right oar &nbsp;&nbsp; <b>R</b> restart
+  </div>
+  <p>
+    Sweep each oar in a full circle: dip the blade, pull it through the
+    water, lift it over the boat on the recovery. Both oars in sync go
+    straight — one side steers. Cross the finish line BETWEEN the yellow
+    buoys.
+  </p>
+  <div id="modeRow">
+    <button id="btnSolo">SINGLE PLAYER</button>
+    <button id="btnHost">HOST RACE</button>
+  </div>
+  <div id="joinRow">
+    <input id="joinCode" placeholder="enter room code">
+    <button id="btnJoin">JOIN</button>
+  </div>
+  <div id="mpPanel">
+    <div style="font-size:13px;opacity:.6;letter-spacing:2px;">ROOM CODE</div>
+    <div id="mpCode">······</div>
+    <div id="mpStatus">setting up…</div>
+    <button id="btnBegin" disabled>BEGIN RACE</button>
+  </div>
+  <p style="margin-top:18px">Multiplayer runs peer-to-peer (PeerJS). The big word code lets a friend find your race — it's shown on your screen.</p>
+</div>
+
+<div id="touch">
+  <button id="bQ">Q</button><button id="bW">W</button>
+  <button id="bO">O</button><button id="bP">P</button>
+  <button id="bM">♪</button>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const TAU = Math.PI * 2;
+
+/* ============================================================
+   WAVES — sum of sines, shared by GPU shader and CPU physics.
+   ============================================================ */
+const WAVES = [
+  [ 1.0,  0.25, 0.18, 17.0, 1.15],
+  [ 0.6, -0.8,  0.12, 11.0, 1.55],
+  [-0.3,  1.0,  0.07,  6.5, 2.10],
+  [ 0.9,  0.9,  0.04,  3.8, 2.60],
+];
+
+function waveHeight(x, z, t) {
+  let h = 0;
+  for (const [dx, dz, amp, len, spd] of WAVES) {
+    h += amp * Math.sin((x * dx / len + z * dz / len) * Math.PI * 2 + t * spd);
+  }
+  return h;
+}
+
+const glslWaves = WAVES.map(([dx, dz, amp, len, spd]) =>
+  `h += ${amp.toFixed(4)} * sin((p.x * ${(dx / len).toFixed(6)} + p.y * ${(dz / len).toFixed(6)}) * 6.2831853 + uTime * ${spd.toFixed(4)});`
+).join('\n');
+
+/* ============================================================
+   RENDERER / SCENE
+   ============================================================ */
+const canvas = document.getElementById('c');
+const isMobile = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile ? 1.5 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87b8d8);
+scene.fog = new THREE.Fog(0x87b8d8, 60, 260);
+
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 600);
+
+const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
+sun.position.set(40, 55, -30);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -25; sun.shadow.camera.right = 25;
+sun.shadow.camera.top = 25; sun.shadow.camera.bottom = -25;
+sun.shadow.camera.far = 200;
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xbfd9ee, 0x1c4d66, 0.9));
+
+/* ---------------- Water ---------------- */
+const WATER_SIZE = 500;
+const WATER_SEG = isMobile ? 120 : 200;
+const waterUniforms = { uTime: { value: 0 }, uSunDir: { value: sun.position.clone().normalize() } };
+
+const waterMat = new THREE.ShaderMaterial({
+  uniforms: waterUniforms,
+  vertexShader: `
+    uniform float uTime;
+    varying vec3 vWorldPos;
+    varying vec3 vNormal;
+    float waveH(vec2 p) {
+      float h = 0.0;
+      ${glslWaves}
+      return h;
+    }
+    void main() {
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      wp.y += waveH(wp.xz);
+      float e = 0.3;
+      float hx = waveH(wp.xz + vec2(e, 0.0));
+      float hz = waveH(wp.xz + vec2(0.0, e));
+      vNormal = normalize(vec3(-(hx - wp.y) / e, 1.0, -(hz - wp.y) / e));
+      vWorldPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uSunDir;
+    varying vec3 vWorldPos;
+    varying vec3 vNormal;
+    void main() {
+      vec3 deep = vec3(0.02, 0.15, 0.24);
+      vec3 shallow = vec3(0.06, 0.35, 0.42);
+      vec3 V = normalize(cameraPosition - vWorldPos);
+      vec3 N = normalize(vNormal);
+      float fres = pow(1.0 - max(dot(V, N), 0.0), 3.0);
+      vec3 col = mix(deep, shallow, fres * 0.7);
+      vec3 H = normalize(uSunDir + V);
+      float spec = pow(max(dot(N, H), 0.0), 220.0) * 2.2;
+      col += vec3(1.0, 0.95, 0.85) * spec;
+      col = mix(col, vec3(0.55, 0.72, 0.85), fres * 0.5);
+      gl_FragColor = vec4(col, 0.94);
+    }
+  `,
+  transparent: true,
+});
+const water = new THREE.Mesh(
+  new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, WATER_SEG, WATER_SEG).rotateX(-Math.PI / 2),
+  waterMat
+);
+water.frustumCulled = false;
+scene.add(water);
+
+/* ============================================================
+   BOAT RIG FACTORY
+   ============================================================ */
+const wood = new THREE.MeshStandardMaterial({ color: 0xc47b3a, roughness: 0.6 });
+const woodDark = new THREE.MeshStandardMaterial({ color: 0x8a4f22, roughness: 0.7 });
+const skin = new THREE.MeshStandardMaterial({ color: 0xe8b48c, roughness: 0.8 });
+const shirtA = new THREE.MeshStandardMaterial({ color: 0xd8352f, roughness: 0.85 });
+const shirtB = new THREE.MeshStandardMaterial({ color: 0x2f6fd8, roughness: 0.85 });
+const shorts = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.85 });
+const oarMat = new THREE.MeshStandardMaterial({ color: 0x8f7b52, roughness: 0.55 });
+const bladeMat = new THREE.MeshStandardMaterial({ color: 0x2e6fb0, roughness: 0.4 });
+
+const OARLOCK_X = 0.55, OARLOCK_Z = -0.35, OAR_R = 2.1;
+
+function makeHull() {
+  const L = 3.4, W = 0.85, H = 0.42;
+  const g = new THREE.BufferGeometry();
+  const secs = [
+    { z: -L / 2, w: W * 0.75, y: 0.0 },
+    { z: -L * 0.15, w: W, y: 0.0 },
+    { z: L * 0.25, w: W * 0.7, y: 0.05 },
+    { z: L / 2, w: 0.12, y: 0.18 },
+  ];
+  const top = H / 2, bot = -H / 2;
+  const pos = [], idx = [], verts = [];
+  for (const s of secs) {
+    verts.push(
+      [-s.w, bot, s.z], [s.w, bot, s.z],
+      [s.w, top, s.z], [-s.w, top, s.z],
+      [0, top + s.y, s.z]
+    );
+  }
+  for (const v of verts) pos.push(...v);
+  for (let i = 0; i < secs.length - 1; i++) {
+    const a = i * 5, b = (i + 1) * 5;
+    idx.push(a, a + 1, b + 1, a, b + 1, b);
+    idx.push(a + 1, a + 2, b + 2, a + 1, b + 2, b + 1);
+    idx.push(a + 3, a, b, a + 3, b, b + 3);
+    idx.push(a + 2, a + 4, b + 4, a + 2, b + 4, b + 2);
+    idx.push(a + 4, a + 3, b + 3, a + 4, b + 3, b + 4);
+  }
+  for (const end of [0, secs.length - 1]) {
+    const o = end * 5;
+    if (end === 0) idx.push(o, o + 2, o + 1, o, o + 3, o + 2, o, o + 4, o + 3, o, o + 1, o + 4);
+    else idx.push(o, o + 1, o + 2, o, o + 2, o + 3, o, o + 3, o + 4, o, o + 4, o + 1);
+  }
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+function buildRig(shirtColor) {
+  const boat = new THREE.Group();
+  const hull = new THREE.Mesh(makeHull(), wood);
+  hull.castShadow = true;
+  boat.add(hull);
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.12), woodDark);
+  rail.position.set(0, 0.24, -0.3);
+  boat.add(rail);
+
+  const rower = new THREE.Group();
+  rower.position.set(0, 0.3, -0.35);
+  boat.add(rower);
+
+  const shirt = shirtColor === 'blue' ? shirtB : shirtA;
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.34, 4, 10), shirt);
+  torso.position.y = 0.42;
+  torso.castShadow = true;
+  rower.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 12), skin);
+  head.position.y = 0.82;
+  head.castShadow = true;
+  rower.add(head);
+  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.22), shorts);
+  hips.position.y = 0.12;
+  rower.add(hips);
+  const legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.36, 3, 8), shorts);
+  const legR = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.36, 3, 8), shorts);
+  legL.position.set(-0.13, 0.02, 0.18);
+  legR.position.set(0.13, 0.02, 0.18);
+  legL.castShadow = legR.castShadow = true;
+  rower.add(legL, legR);
+  const armGeo = new THREE.CapsuleGeometry(0.045, 0.34, 3, 8);
+  const armL = new THREE.Mesh(armGeo, shirt);
+  const armR = new THREE.Mesh(armGeo, shirt);
+  armL.castShadow = armR.castShadow = true;
+  rower.add(armL, armR);
+
+  function makeOar() {
+    const grp = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.022, 2.3, 8), oarMat);
+    shaft.rotation.x = Math.PI / 2;
+    shaft.position.z = -1.0;
+    grp.add(shaft);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.55), bladeMat);
+    blade.position.z = -2.05;
+    blade.castShadow = true;
+    grp.add(blade);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 8), woodDark);
+    handle.rotation.x = Math.PI / 2;
+    handle.position.z = 0.15;
+    grp.add(handle);
+    return grp;
+  }
+  const oarL = makeOar();
+  oarL.position.set(-OARLOCK_X, 0.32, OARLOCK_Z);
+  boat.add(oarL);
+  const oarR = makeOar();
+  oarR.position.set(OARLOCK_X, 0.32, OARLOCK_Z);
+  boat.add(oarR);
+  const lockGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.2, 6);
+  const lockL = new THREE.Mesh(lockGeo, woodDark); lockL.position.set(-OARLOCK_X - 0.03, 0.3, OARLOCK_Z);
+  const lockR = new THREE.Mesh(lockGeo, woodDark); lockR.position.set(OARLOCK_X + 0.03, 0.3, OARLOCK_Z);
+  boat.add(lockL, lockR);
+
+  return { boat, oarL, oarR, rower, torso, head, armL, armR, legL, legR };
+}
+
+function applyRigPose(rig, aL, aR) {
+  for (const [oar, a, side] of [[rig.oarL, aL, -1], [rig.oarR, aR, 1]]) {
+    const tip = tipLocal(a, side);
+    const yN = Math.max(-0.95, Math.min(0.95, tip.y / OAR_R));
+    oar.rotation.order = 'YXZ';
+    oar.rotation.x = Math.asin(yN);
+    oar.rotation.y = Math.atan2(-side * Math.cos(a), Math.sin(a));
+  }
+  const fore = -(Math.sin(aL) + Math.sin(aR)) / 2;
+  rig.rower.rotation.x = fore * 0.45;
+  rig.rower.position.z = -0.2 + fore * 0.28;
+  rig.torso.rotation.x = fore * 0.12;
+  rig.head.position.y = 0.82 - Math.max(0, -fore) * 0.06;
+  const reach = 0.45 + fore * 0.3;
+  rig.armL.position.set(-0.16, 0.55, reach);
+  rig.armR.position.set(0.16, 0.55, reach);
+  rig.armL.rotation.x = -1.1 - fore * 0.8;
+  rig.armR.rotation.x = -1.1 - fore * 0.8;
+  rig.legL.rotation.x = Math.PI / 2 - 0.5 - fore * 0.5;
+  rig.legR.rotation.x = Math.PI / 2 - 0.5 - fore * 0.5;
+}
+
+const rigL = buildRig('red');
+scene.add(rigL.boat);
+let rigR = null;   // remote boat, built when multiplayer connects
+
+/* ---------- course: start line + finish gate + buoys ---------- */
+const GOAL = 100, GATE_W = 3.0;
+const buoyMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.5 });
+const gateMat = new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: 0.4 });
+for (const gx of [-9.6, -6.4, 6.4, 9.6]) {
+  const grp = new THREE.Group();
+  const b = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 10), buoyMat);
+  grp.add(b);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.4, 6), buoyMat);
+  pole.position.y = 1.1;
+  grp.add(pole);
+  grp.position.set(gx, 0.15, GOAL);
+  scene.add(grp);
+}
+for (const gx of [-GATE_W - 0.2, GATE_W + 0.2]) {
+  const grp = new THREE.Group();
+  const b = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), gateMat);
+  b.castShadow = true;
+  grp.add(b);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.2, 6), gateMat);
+  pole.position.y = 1.3;
+  grp.add(pole);
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.02), gateMat);
+  flag.position.set(gx > 0 ? -0.25 : 0.25, 2.7, 0);
+  grp.add(flag);
+  grp.position.set(gx, 0.15, GOAL);
+  scene.add(grp);
+}
+const startLine = new THREE.Mesh(
+  new THREE.BoxGeometry(20, 0.1, 0.3),
+  new THREE.MeshStandardMaterial({ color: 0xffffff })
+);
+startLine.position.set(0, 0.05, 0);
+scene.add(startLine);
+
+/* ============================================================
+   SEAGULLS — deterministic (seeded) per race, dive at own boat
+   ============================================================ */
+const gullMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.8 });
+const gullGrey = new THREE.MeshStandardMaterial({ color: 0x9aa2a8, roughness: 0.8 });
+const beakMat = new THREE.MeshStandardMaterial({ color: 0xe8a13a, roughness: 0.5 });
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let raceRng = mulberry32(1);
+
+function makeGull(rnd) {
+  const grp = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), gullMat);
+  body.scale.set(1, 0.8, 2);
+  body.castShadow = true;
+  grp.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), gullMat);
+  head.position.z = 0.2;
+  grp.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 6), beakMat);
+  beak.rotation.x = Math.PI / 2;
+  beak.position.set(0, -0.01, 0.3);
+  grp.add(beak);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 0.14), gullGrey);
+  tail.position.z = -0.2;
+  grp.add(tail);
+  const wingGeo = new THREE.BoxGeometry(0.55, 0.02, 0.18);
+  const pivotL = new THREE.Group(), pivotR = new THREE.Group();
+  const wingL = new THREE.Mesh(wingGeo, gullGrey);
+  wingL.position.x = -0.3; wingL.castShadow = true;
+  const wingR = new THREE.Mesh(wingGeo, gullGrey);
+  wingR.position.x = 0.3; wingR.castShadow = true;
+  pivotL.add(wingL); pivotR.add(wingR);
+  grp.add(pivotL, pivotR);
+  grp.userData = {
+    pivotL, pivotR, flap: 6 + rnd() * 4, phase: rnd() * 10,
+    mode: 'circle', angle: rnd() * TAU,
+    radius: 6 + rnd() * 9, height: 4 + rnd() * 3,
+    speed: (0.3 + rnd() * 0.5) * (rnd() < 0.5 ? 1 : -1),
+    fleeT: 0, vel: new THREE.Vector3(),
+  };
+  return grp;
+}
+
+const gulls = [];
+for (let i = 0; i < 5; i++) {
+  const g = makeGull(raceRng);
+  gulls.push(g);
+  scene.add(g);
+}
+let attackTimer = 6;
+let camShake = 0;
+const splashRing = new THREE.Mesh(
+  new THREE.TorusGeometry(1, 0.09, 8, 24),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 })
+);
+splashRing.rotation.x = -Math.PI / 2;
+splashRing.visible = false;
+scene.add(splashRing);
+let splashT = 1;
+
+function gullSplash(x, z) {
+  splashT = 0;
+  splashRing.position.set(x, waveHeight(x, z, S.t) + 0.05, z);
+  splashRing.visible = true;
+}
+
+function seagullKnock(dx, dz) {
+  const sgn = Math.random() < 0.5 ? -1 : 1;
+  S.rollVel += sgn * (0.5 + Math.random() * 0.3);        // heel kick
+  S.yawVel += (Math.random() - 0.5) * 0.9;               // hard heading knock
+  S.vx += dx * 2.0 + (Math.random() - 0.5) * 0.8;
+  S.vz += dz * 2.0 + (Math.random() - 0.5) * 0.5;
+  S.vy -= 0.9;                                           // hull shoved into water
+  camShake = 0.8;
+  gullSplash(S.x + dx * 0.5, S.z + dz * 0.5);
+  A.knock();
+}
+
+function updateGulls(dt) {
+  const t = S.t || 0;
+  for (const g of gulls) {
+    const ud = g.userData;
+    ud.phase += dt * ud.flap;
+    const flap = ud.mode === 'attack' ? 0.9 : 0.45;
+    ud.pivotL.rotation.z = Math.sin(ud.phase) * flap;
+    ud.pivotR.rotation.z = -Math.sin(ud.phase) * flap;
+
+    if (ud.mode === 'circle') {
+      ud.angle += ud.speed * dt;
+      const gx = S.x + Math.cos(ud.angle) * ud.radius;
+      const gz = S.z + Math.sin(ud.angle) * ud.radius;
+      const gy = S.y + ud.height + Math.sin(ud.phase * 0.2) * 0.6;
+      const nx = S.x + Math.cos(ud.angle + 0.08 * Math.sign(ud.speed)) * ud.radius;
+      const nz = S.z + Math.sin(ud.angle + 0.08 * Math.sign(ud.speed)) * ud.radius;
+      g.position.set(gx, gy, gz);
+      g.lookAt(nx, gy, nz);
+    } else if (ud.mode === 'attack') {
+      const dx = S.x - g.position.x, dz = S.z - g.position.z;
+      const dy = (S.y + 0.5) - g.position.y;
+      const d = Math.hypot(dx, dy, dz);
+      if (d < 0.9) {
+        const hx = dx || 0.01, hz = dz || 0.01, hm = Math.hypot(hx, hz);
+        seagullKnock(hx / hm, hz / hm);
+        ud.mode = 'flee';
+        ud.fleeT = 2.2;
+        ud.vel.set((dx / d) * 7 + (Math.random() - 0.5) * 2, 5, (dz / d) * 7 + (Math.random() - 0.5) * 2);
+      } else {
+        g.position.x += (dx / d) * 10 * dt;
+        g.position.y += dy * 8 * dt;
+        g.position.z += (dz / d) * 10 * dt;
+        g.lookAt(S.x, S.y + 0.5, S.z);
+      }
+    } else if (ud.mode === 'flee') {
+      ud.fleeT -= dt;
+      ud.vel.y -= 3 * dt;
+      g.position.addScaledVector(ud.vel, dt);
+      g.lookAt(g.position.x + ud.vel.x, g.position.y + ud.vel.y, g.position.z + ud.vel.z);
+      if (ud.fleeT <= 0) {
+        ud.mode = 'circle';
+        ud.radius = 7 + raceRng() * 8;
+        ud.height = 4 + raceRng() * 3;
+        const ox = g.position.x - S.x, oz = g.position.z - S.z;
+        ud.angle = Math.atan2(oz, ox);
+      }
+    }
+  }
+
+  attackTimer -= dt;
+  if (attackTimer <= 0 && raceActive) {
+    attackTimer = 4.5 + raceRng() * 6;
+    const g = gulls[Math.floor(raceRng() * gulls.length)];
+    if (g.userData.mode === 'circle') g.userData.mode = 'attack';
+  }
+}
+
+/* ============================================================
+   AUDIO — procedural WebAudio music + SFX
+   ============================================================ */
+const A = {
+  ctx: null, out: null, musicGain: null, sfxGain: null, noise: null,
+  musicOn: true, seqTimer: null, nextStep: 0, step: 0,
+  ensure() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.out = this.ctx.createGain();
+    this.out.gain.value = 0.55;
+    this.out.connect(this.ctx.destination);
+    this.sfxGain = this.ctx.createGain();
+    this.sfxGain.gain.value = 0.9;
+    this.sfxGain.connect(this.out);
+    this.musicGain = this.ctx.createGain();
+    this.musicGain.gain.value = this.musicOn ? 0.16 : 0;
+    this.musicGain.connect(this.out);
+    const len = this.ctx.sampleRate;
+    this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = this.noise.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.nextStep = this.ctx.currentTime + 0.1;
+    this.seqTimer = setInterval(() => this.schedule(), 90);
+  },
+  toggleMusic() {
+    this.ensure();
+    this.musicOn = !this.musicOn;
+    if (this.musicGain) {
+      this.musicGain.gain.linearRampToValueAtTime(this.musicOn ? 0.16 : 0, this.ctx.currentTime + 0.2);
+    }
+  },
+  env(gainVal, t0, a, d) {
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(gainVal, t0 + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + a + d);
+    g.connect(this.sfxGain);
+    return g;
+  },
+  tone(freq, type, gainVal, dur, t0, dest) {
+    if (!this.ctx) return;
+    const o = this.ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t0);
+    o.connect(dest);
+    o.start(t0);
+    o.stop(t0 + dur + 0.05);
+    return o;
+  },
+  noiseHit(v, f0, f1, dur, t0, dest) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noise;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = 0.7;
+    f.frequency.setValueAtTime(f0, t0);
+    f.frequency.exponentialRampToValueAtTime(Math.max(40, f1), t0 + dur);
+    src.connect(f);
+    f.connect(dest);
+    src.start(t0);
+    src.stop(t0 + dur + 0.05);
+    return f;
+  },
+  splash(v = 0.4) {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    const g = this.env(v * 0.8, t0, 0.008, 0.3 + v * 0.2);
+    this.noiseHit(v, 900, 300, 0.35 + v * 0.2, t0, g);
+  },
+  oarHit(v = 0.5) {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    const g = this.env(v * 0.5, t0, 0.01, 0.22);
+    this.noiseHit(v, 500 + v * 400, 220, 0.28, t0, g);
+  },
+  clank() {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    const g = this.env(0.35, t0, 0.004, 0.15);
+    const o = this.tone(240 + Math.random() * 120, 'square', 0, 0, t0, g);
+    if (o) o.frequency.exponentialRampToValueAtTime(120, t0 + 0.12);
+    this.noiseHit(0.3, 1600, 500, 0.1, t0, g);
+  },
+  knock() {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    const g = this.env(0.7, t0, 0.005, 0.4);
+    const o = this.tone(130, 'sine', 0, 0, t0, g);
+    if (o) o.frequency.exponentialRampToValueAtTime(45, t0 + 0.3);
+    this.noiseHit(0.9, 800, 200, 0.45, t0, g);
+  },
+  capsize() {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    const g = this.env(0.5, t0, 0.02, 1.1);
+    const o = this.tone(220, 'sawtooth', 0, 0, t0, g);
+    if (o) o.frequency.exponentialRampToValueAtTime(50, t0 + 0.9);
+    this.noiseHit(0.8, 500, 100, 1.0, t0, g);
+    this.noiseHit(0.5, 1200, 300, 0.5, t0 + 0.15, this.env(0.3, t0 + 0.15, 0.01, 0.5));
+  },
+  beep(freq, dur) {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    this.tone(freq, 'sine', 0, 0, t0, this.env(0.4, t0, 0.005, dur));
+  },
+  goBoop() {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    this.tone(990, 'sine', 0, 0, t0, this.env(0.45, t0, 0.008, 0.3));
+  },
+  jingle(win) {
+    if (!this.ctx) return;
+    const notes = win ? [523.3, 659.3, 784, 1046.5] : [523.3, 440, 349.2, 261.6];
+    notes.forEach((f, i) => {
+      const t0 = this.ctx.currentTime + i * 0.16;
+      this.tone(f, 'triangle', 0, 0, t0, this.env(0.35, t0, 0.01, 0.3));
+    });
+  },
+  bell() {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    const g = this.env(0.4, t0, 0.005, 1.4);
+    this.tone(880, 'sine', 0, 0, t0, g);
+    const g2 = this.env(0.2, t0, 0.005, 1.0);
+    this.tone(1760, 'sine', 0, 0, t0, g2);
+  },
+  boom(v = 1) {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    const g = this.env(0.8 * v, t0, 0.003, 0.9);
+    const o = this.tone(90, 'sine', 0, 0, t0, g);
+    if (o) o.frequency.exponentialRampToValueAtTime(28, t0 + 0.7);
+    const g2 = this.env(0.55 * v, t0, 0.002, 0.3);
+    this.noiseHit(v, 1800, 300, 0.3, t0, g2);
+    this.noiseHit(0.4 * v, 400, 120, 0.8, t0 + 0.02, this.env(0.3 * v, t0 + 0.02, 0.02, 0.8));
+  },
+  schedule() {
+    if (!this.ctx || !this.musicOn) return;
+    const spb = 60 / 124 / 2;   // eighth note @ 124 bpm
+    const step = this.step % 32;
+    while (this.nextStep < this.ctx.currentTime + 0.3) {
+      const t0 = this.nextStep;
+      const s = this.step % 32;
+      const chords = [
+        [110, 220, 261.6, 329.6],    // Am
+        [98, 196, 246.9, 392],       // G
+        [87.3, 174.6, 220, 349.2],   // F
+        [110, 220, 261.6, 329.6],    // Am
+      ];
+      const mel = [
+        440, 0, 659.3, 0, 523.3, 659.3, 880, 0,
+        784, 0, 659.3, 0, 587.3, 523.3, 659.3, 0,
+        440, 0, 659.3, 0, 523.3, 659.3, 784, 0,
+        659.3, 587.3, 523.3, 0, 440, 0, 392, 0,
+      ];
+      if (step % 8 === 0) {
+        const ch = chords[Math.floor(step / 8)];
+        for (let i = 1; i < ch.length; i++) {
+          const g = this.ctx.createGain();
+          g.gain.setValueAtTime(0.05, t0);
+          g.gain.linearRampToValueAtTime(0.03, t0 + 1.2);
+          g.gain.linearRampToValueAtTime(0, t0 + 1.7);
+          g.connect(this.musicGain);
+          this.tone(ch[i], 'triangle', 0, 0, t0, g);
+        }
+        const gb = this.ctx.createGain();
+        gb.gain.setValueAtTime(0.14, t0);
+        gb.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
+        gb.connect(this.musicGain);
+        this.tone(ch[0], 'triangle', 0, 0, t0, gb);
+        const gb2 = this.ctx.createGain();
+        gb2.gain.setValueAtTime(0.1, t0 + spb * 4);
+        gb2.gain.exponentialRampToValueAtTime(0.001, t0 + spb * 4 + 0.4);
+        gb2.connect(this.musicGain);
+        this.tone(ch[0], 'triangle', 0, 0, t0 + spb * 4, gb2);
+      }
+      const f = mel[step];
+      if (f > 0) {
+        const gm = this.ctx.createGain();
+        gm.gain.setValueAtTime(0.085, t0);
+        gm.gain.exponentialRampToValueAtTime(0.001, t0 + 0.24);
+        gm.connect(this.musicGain);
+        this.tone(f, 'triangle', 0, 0, t0, gm);
+      }
+      this.nextStep += spb;
+      this.step++;
+    }
+  },
+};
+document.addEventListener('pointerdown', () => A.ensure(), { once: true });
+document.addEventListener('keydown', () => A.ensure(), { once: true });
+
+/* ============================================================
+   SEA MINES — deterministic per race seed, proximity blast
+   ============================================================ */
+const MINE_COUNT = 6;
+const mineMat = new THREE.MeshStandardMaterial({ color: 0x16202a, roughness: 0.45, metalness: 0.4 });
+const mineLed = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff2200, emissiveIntensity: 2 });
+
+const mines = new THREE.Group();
+scene.add(mines);
+const flashMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 12, 10),
+  new THREE.MeshBasicMaterial({ color: 0xfff1b0, transparent: true, opacity: 0 })
+);
+flashMesh.visible = false;
+scene.add(flashMesh);
+let flashT = 1;
+
+function spawnMines(seedRng) {
+  while (mines.children.length) mines.remove(mines.children[0]);
+  mineDef = [];
+  for (let i = 0; i < MINE_COUNT; i++) {
+    const grp = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), mineMat);
+    body.castShadow = true;
+    grp.add(body);
+    for (let s = 0; s < 6; s++) {
+      const ang = (s / 6) * TAU;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.18, 5), mineMat);
+      spike.position.set(Math.cos(ang) * 0.36, Math.sin(ang) * 0.3, 0);
+      spike.rotation.z = -ang + Math.PI / 2;
+      grp.add(spike);
+    }
+    const spikeT = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 5), mineMat);
+    spikeT.position.set(0, 0.38, 0);
+    grp.add(spikeT);
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), mineLed);
+    led.position.y = 0.28;
+    grp.add(led);
+    const mx = (seedRng() * 2 - 1) * 5.2;
+    const mz = 12 + seedRng() * 82;
+    grp.position.set(mx, waveHeight(mx, mz, S.t) - 0.1, mz);
+    mines.add(grp);
+    mineDef.push({ x: mx, z: mz, exploded: false, lastTick: -10 });
+  }
+}
+let mineDef = [];
+
+function mineFlash(x, z) {
+  flashT = 0;
+  flashMesh.position.set(x, waveHeight(x, z, S.t) + 0.5, z);
+  flashMesh.visible = true;
+}
+
+function detonateMine(i, x, z) {
+  const m = mineDef[i];
+  if (!m || m.exploded) return;
+  m.exploded = true;
+  const grp = mines.children[i];
+  if (grp) grp.visible = false;
+  mineFlash(x != null ? x : m.x, z != null ? z : m.z);
+  A.boom(1);
+  camShake = Math.max(camShake, 1.0);
+}
+
+function checkMines() {
+  if (!raceActive) return;
+  let i = 0;
+  for (const m of mineDef) {
+    if (!m.exploded) {
+      const d = Math.hypot(S.x - m.x, S.z - m.z);
+      if (d < 1.7) {
+        detonateMine(i);
+        mineKnockSelf(m);
+      } else if (d < 3.4 && contactClock - (m.lastTick || -10) > 0.4) {
+        m.lastTick = contactClock;
+        A.beep(1200, 0.08);
+      }
+    }
+    i++;
+  }
+}
+
+function mineKnockSelf(m) {
+  const dx = S.x - m.x, dz = S.z - m.z;
+  const d = Math.hypot(dx, dz) || 0.001;
+  const nx = dx / d, nz = dz / d;
+  S.vx += nx * 3.4;
+  S.vz += nz * 3.4;
+  S.vy -= 1.5;
+  const sgn = Math.random() < 0.5 ? -1 : 1;
+  S.rollVel += sgn * (0.9 + Math.random() * 0.5);
+  S.yawVel += (Math.random() - 0.5) * 0.8;
+  gullSplash(S.x, S.z);
+  showMsg('MINE!', '#ff5050');
+  if (net.connected()) {
+    const msg = { t: 'boomB', id: i_m(m), x: m.x, z: m.z };
+    if (net.mode === 'host') net.broadcast(msg);
+    else net.send(msg);
+  }
+}
+
+function i_m(m) { return mineDef.indexOf(m); }
+
+function boomRemote(d) {
+  const m = mineDef[d.id];
+  if (m) detonateMine(d.id, d.x, d.z);
+  const dx = S.x - d.x, dz = S.z - d.z;
+  const d2 = Math.hypot(dx, dz);
+  if (d2 < 3.4) {
+    if (d2 > 0.001) {
+      S.vx += (dx / d2) * 3.0 * (1 - d2 / 3.6);
+      S.vz += (dz / d2) * 3.0 * (1 - d2 / 3.6);
+    }
+    S.vy -= 1.3;
+    S.rollVel += (Math.random() < 0.5 ? -1 : 1) * (0.8 + Math.random() * 0.4);
+    showMsg('A MINE BLEW NEARBY!', '#ff5050');
+  }
+}
+
+/* ============================================================
+   PHYSICS STATE + TUNING
+   ============================================================ */
+const S = {
+  x: 0, z: 0, y: 0,
+  vx: 0, vz: 0, vy: 0,
+  yaw: 0, yawVel: 0,
+  roll: 0, rollVel: 0,
+  pitch: 0,
+  aL: -0.9, aLv: 0,
+  aR: -0.9, aRv: 0,
+  t: 0,
+  finished: false, finishedTime: 0, capsized: false,
+  missedGate: false,
+  strokes: 0,
+};
+
+const OAR_RATE = 4.2;
+const OAR_ACCEL_FREE = 9;
+const OAR_ACCEL_LOAD = 3;
+const OAR_DECEL_FREE = 6;
+const OAR_DECEL_LOAD = 1.2;
+const DIP = 1.1;
+const LIFT = 1.2;
+const DRAG_K = 34;
+const FORCE_CAP = 450;
+const LATERAL_DRAG = 3.5;
+const KEEL_K = 45;
+const MASS = 70;
+const ROLL_INERTIA = 16, PITCH_INERTIA = 22;
+const BUOY_K = 26, BUOY_DAMP = 6.5;
+const YAW_DAMP = 3.2;
+const ROLL_K = 20, ROLL_DAMP = 6;
+const WAVE_ROLL = 0.45;
+const CAPSIZE_ROLL = 1.3;
+const HULL_DRAFT = 0.12;
+
+const keys = {};
+let raceSeed = 1;
+let oppFin = null;
+let pb = parseFloat(localStorage.getItem('rowp_pb') || '0') || null;
+
+addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;
+  if (e.code === 'KeyM') { A.toggleMusic(); return; }
+  keys[e.code] = true;
+  if (['KeyQ', 'KeyW', 'KeyO', 'KeyP'].includes(e.code)) e.preventDefault();
+});
+addEventListener('keyup', e => keys[e.code] = false);
+
+const $ = id => document.getElementById(id);
+let shownMsg = '';
+function showMsg(txt, color) {
+  if (txt !== '' && shownMsg === txt) return;
+  shownMsg = txt;
+  const m = $('msg');
+  m.innerHTML = txt;
+  m.style.color = color || '#fff';
+  m.style.opacity = txt ? 1 : 0;
+}
+
+let raceActive = false;
+
+function laneX(idx, n) {
+  const off = idx - (n - 1) / 2;
+  return off * 2.6 + (idx % 2 === 0 ? 0 : 1.3);
+}
+
+function resetState() {
+  Object.assign(S, {
+    x: S.laneX || 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0,
+    yaw: 0, yawVel: 0, roll: 0, rollVel: 0, pitch: 0, pitchVel: 0,
+    aL: -0.9, aLv: 0, aR: -0.9, aRv: 0,
+    finished: false, finishedTime: 0, capsized: false, missedGate: false, strokes: 0,
+  });
+  tipsInit = false;
+  oppFin = null;
+  splashT = 1;
+  splashRing.visible = false;
+  shownMsg = '';
+  $('msg').style.opacity = 0;
+}
+
+function beginRace(seed, lane) {
+  raceSeed = seed >>> 0;
+  raceRng = mulberry32(raceSeed);
+  S.laneX = lane || 0;
+  resetState();
+  spawnMines(raceRng);
+  for (const g of gulls) {
+    const ud = g.userData;
+    ud.mode = 'circle';
+    ud.angle = raceRng() * TAU;
+    ud.radius = 6 + raceRng() * 9;
+    ud.height = 4 + raceRng() * 3;
+    ud.speed = (0.3 + raceRng() * 0.5) * (raceRng() < 0.5 ? 1 : -1);
+  }
+  attackTimer = 4.5 + raceRng() * 6;
+  S.t = 0;
+  raceActive = true;
+  endTimer = -1;
+  showMsg('');
+  camPos.set(0, 3.4, -8);
+  $('overlay').classList.add('hidden');
+  A.goBoop();
+}
+
+let endTimer = -1;
+function endRaceSoon(seconds = 5) {
+  if (endTimer < 0) endTimer = seconds;
+}
+
+function resetToLobby() {
+  raceActive = false;
+  endTimer = -1;
+  resetState();
+  if (net.mode === 'host' && net.connected()) {
+    showLobbyHost(net.code);
+    $('btnBegin').disabled = false;
+    $('mpStatus').textContent = 'press BEGIN to race again';
+  } else {
+    $('overlay').classList.remove('hidden');
+    $('mpPanel').classList.remove('show');
+    $('btnBegin').style.display = '';
+  }
+}
+
+/* ============================================================
+   OAR KINEMATICS
+   ============================================================ */
+function tipLocal(theta, side) {
+  const u = Math.cos(theta);
+  const dip = u > 0 ? -DIP * u * u : 0;
+  const lift = u < 0 ? LIFT * u * u : 0;
+  return {
+    x: side * OAR_R * Math.cos(theta),
+    y: dip + lift,
+    z: -OAR_R * Math.sin(theta),
+    u,
+  };
+}
+
+function localToWorld(lx, ly, lz) {
+  const s = Math.sin(S.yaw), c = Math.cos(S.yaw);
+  return [S.x + lx * c + lz * s, S.y + ly, S.z - lx * s + lz * c];
+}
+
+function tipWorld(theta, side) {
+  const t = tipLocal(theta, side);
+  return localToWorld(t.x, 0.32 + t.y, OARLOCK_Z + t.z);
+}
+
+let tipsInit = false;
+let prevTipL = [0, 0, 0], prevTipR = [0, 0, 0];
+let prevSubL = 0, prevSubR = 0;
+
+function oarStep(a, aV, dirKey, revKey, loaded, dt) {
+  let target = 0, accel = OAR_DECEL_FREE;
+  if (dirKey) { target = OAR_RATE; accel = loaded ? OAR_ACCEL_LOAD : OAR_ACCEL_FREE; }
+  else if (revKey) { target = -OAR_RATE; accel = loaded ? OAR_ACCEL_LOAD : OAR_ACCEL_FREE; }
+  else accel = loaded ? OAR_DECEL_LOAD : OAR_DECEL_FREE;
+  aV += (target - aV) * Math.min(1, accel * dt);
+  return [a + aV * dt, aV];
+}
+
+/* ============================================================
+   SIMULATION
+   ============================================================ */
+const EMPTY = { KeyQ: false, KeyW: false, KeyO: false, KeyP: false };
+
+function step(dt) {
+  S.t += dt;
+  const prevZ = S.z;
+  const sY = Math.sin(S.yaw), cY = Math.cos(S.yaw);
+  const fx = sY, fz = cY;
+  const rx = cY, rz = -sY;
+
+  const [tlx, tly, tlz] = tipWorld(S.aL, -1);
+  const [trx, try_, trz] = tipWorld(S.aR, 1);
+  const tL = tipLocal(S.aL, -1);
+  const tR = tipLocal(S.aR, 1);
+
+  if (!tipsInit) {
+    prevTipL = [tlx, tly, tlz];
+    prevTipR = [trx, try_, trz];
+    tipsInit = true;
+  }
+
+  const bvLx = (tlx - prevTipL[0]) / dt, bvLy = (tly - prevTipL[1]) / dt, bvLz = (tlz - prevTipL[2]) / dt;
+  const bvRx = (trx - prevTipR[0]) / dt, bvRy = (try_ - prevTipR[1]) / dt, bvRz = (trz - prevTipR[2]) / dt;
+  prevTipL = [tlx, tly, tlz];
+  prevTipR = [trx, try_, trz];
+
+  const wL = waveHeight(tlx, tlz, S.t);
+  const wR = waveHeight(trx, trz, S.t);
+  const subL = Math.max(0, Math.min(1, (wL - tly) / 0.25));
+  const subR = Math.max(0, Math.min(1, (wR - try_) / 0.25));
+  const feathL = (bvLy > 0.4 || tL.u < 0.15) ? 0.15 : 1;
+  const feathR = (bvRy > 0.4 || tR.u < 0.15) ? 0.15 : 1;
+
+  const loadL = subL > 0.4 && feathL > 0.5;
+  const loadR = subR > 0.4 && feathR > 0.5;
+  if (raceActive) {
+    if (prevSubL < 0.2 && subL >= 0.5) A.oarHit(0.35 + Math.abs(S.aLv) * 0.1);
+    if (prevSubR < 0.2 && subR >= 0.5) A.oarHit(0.35 + Math.abs(S.aRv) * 0.1);
+    prevSubL = subL; prevSubR = subR;
+  }
+  const kk = raceActive ? keys : EMPTY;
+  const [naL, nvL] = oarStep(S.aL, S.aLv, kk['KeyQ'], kk['KeyW'], loadL, dt);
+  const [naR, nvR] = oarStep(S.aR, S.aRv, kk['KeyO'], kk['KeyP'], loadR, dt);
+
+  const wl_ = ((S.aL % TAU) + TAU) % TAU, nl_ = ((naL % TAU) + TAU) % TAU;
+  const wr_ = ((S.aR % TAU) + TAU) % TAU, nr_ = ((naR % TAU) + TAU) % TAU;
+  if (nvL > 0 && nl_ < wl_) S.strokes++;
+  if (nvR > 0 && nr_ < wr_) S.strokes++;
+
+  S.aL = naL; S.aLv = nvL;
+  S.aR = naR; S.aRv = nvR;
+
+  let Fx = 0, Fy = 0, Fz = 0, tauYaw = 0, tauRoll = 0, tauPitch = 0;
+
+  function applyBlade(bx, by, bz, bvx, bvy, bvz, subm, feath) {
+    if (subm <= 0) return;
+    const mag = Math.hypot(bvx, bvy, bvz);
+    if (mag < 0.05) return;
+    let F = Math.min(DRAG_K * mag, FORCE_CAP) * subm * feath;
+    const dfx = (-bvx / mag) * F, dfy = (-bvy / mag) * F, dfz = (-bvz / mag) * F;
+    Fx += dfx; Fy += dfy; Fz += dfz;
+    const rxv = bx - S.x, ryv = by - (S.y + 0.3), rzv = bz - S.z;
+    const tX = ryv * dfz - rzv * dfy;
+    const tY = rzv * dfx - rxv * dfz;
+    const tZ = rxv * dfy - ryv * dfx;
+    tauYaw += tY * 0.45;
+    tauRoll += tX * fx + tZ * fz;
+    tauPitch += tX * rx + tZ * rz;
+  }
+  applyBlade(tlx, tly, tlz, bvLx, bvLy, bvLz, subL, feathL);
+  applyBlade(trx, try_, trz, bvRx, bvRy, bvRz, subR, feathR);
+
+  const vlat = S.vx * rx + S.vz * rz;
+  const hSpeed = Math.hypot(S.vx, S.vz);
+  Fx += -LATERAL_DRAG * vlat * rx;
+  Fz += -LATERAL_DRAG * vlat * rz;
+  tauYaw += KEEL_K * vlat;
+  S.vx += (Fx / MASS) * dt - S.vx * 0.6 * dt;
+  S.vy += (Fy / MASS) * dt;
+  S.vz += (Fz / MASS) * dt - S.vz * 0.6 * dt;
+  S.x += S.vx * dt;
+  S.y += S.vy * dt;
+  S.z += S.vz * dt;
+
+  S.yawVel += (tauYaw / MASS) * dt;
+  S.yawVel -= S.yawVel * YAW_DAMP * dt;
+  S.yaw += S.yawVel * dt;
+
+  S.rollVel += (tauRoll / ROLL_INERTIA) * dt;
+  S.pitchVel += (tauPitch / PITCH_INERTIA) * dt;
+
+  const B = 1.3, Wd = 0.5;
+  const hBow = waveHeight(S.x + fx * B, S.z + fz * B, S.t);
+  const hSt = waveHeight(S.x - fx * B, S.z - fz * B, S.t);
+  const hPort = waveHeight(S.x - rx * Wd, S.z - rz * Wd, S.t);
+  const hStar = waveHeight(S.x + rx * Wd, S.z + rz * Wd, S.t);
+
+  const targetY = (hBow + hSt + hPort + hStar) / 4 + HULL_DRAFT;
+  S.vy += (targetY - S.y) * BUOY_K * dt - S.vy * BUOY_DAMP * dt;
+  S.y += S.vy * dt;
+
+  const targetPitch = Math.atan2(hSt - hBow, B * 2) * 0.8;
+  S.pitchVel += (targetPitch - S.pitch) * 8 * dt - S.pitchVel * 5 * dt;
+  S.pitch += S.pitchVel * dt;
+
+  const waveRoll = Math.atan2(hPort - hStar, Wd * 2) * WAVE_ROLL;
+  S.rollVel += ((waveRoll - S.roll) * ROLL_K - S.rollVel * ROLL_DAMP) * dt;
+  S.roll += S.rollVel * dt;
+
+  if (!S.capsized && raceActive && Math.abs(S.roll) > CAPSIZE_ROLL) {
+    S.capsized = true;
+    showMsg('CAPSIZED!', '#ff6b6b');
+    A.capsize();
+    raceOver();
+  }
+  if (S.capsized) {
+    S.roll += Math.sign(S.roll || 1) * 1.2 * dt;
+    S.vx *= 1 - 1.5 * dt;
+    S.vz *= 1 - 1.5 * dt;
+  }
+
+  /* ---- finish: cross the line BETWEEN the yellow gate buoys ---- */
+  const crossed = prevZ < GOAL && S.z >= GOAL;
+  if (raceActive && !S.finished && !S.capsized && crossed) {
+    if (Math.abs(S.x) <= GATE_W) {
+      S.finished = true;
+      S.finishedTime = S.t;
+      let msg = `FINISH!<br><small style="font-size:26px">${S.t.toFixed(2)}s · ${S.strokes} strokes</small>`;
+      if (!pb || S.t < pb) {
+        pb = S.t;
+        localStorage.setItem('rowp_pb', S.t.toFixed(2));
+        msg += '<br><small style="font-size:18px;color:#ffd76b">NEW PERSONAL BEST!</small>';
+      }
+      showMsg(msg, '#7bffb2');
+      A.bell();
+      raceOver();
+      if (net.connected()) {
+        net.send({ t: 'fin', v: S.t });
+        maybeResult();
+      }
+    } else if (!S.missedGate) {
+      S.missedGate = true;
+      showMsg('MISSED THE GATE!<br><small style="font-size:20px">head back and pass between the yellow buoys</small>', '#ffb84d');
+    }
+  }
+  if (S.missedGate && S.z < GOAL && Math.abs(S.x) <= GATE_W) {
+    S.missedGate = false;
+    if (!S.capsized && !S.finished) showMsg('');
+  }
+
+  /* ---- visuals ---- */
+  rigL.boat.position.set(S.x, S.y, S.z);
+  rigL.boat.rotation.order = 'YXZ';
+  rigL.boat.rotation.y = S.yaw;
+  rigL.boat.rotation.x = S.pitch;
+  rigL.boat.rotation.z = S.roll;
+  applyRigPose(rigL, S.aL, S.aR);
+}
+
+/* ============================================================
+   MULTIPLAYER (PeerJS, host-authoritative lobby)
+   ============================================================ */
+const net = {
+  peer: null,
+  conn: null,          // guest: single connection to host
+  conns: [],           // host: DataConnection[], each has ._gid
+  mode: '',            // 'host' | 'guest' | ''
+  code: '',
+  myId: 0,
+  nextId: 1,
+  lastS: new Map(),    // host: gid -> last 's' state
+  finTimes: new Map(), // gid -> finish time (0 = host/self handled separately)
+  send(o) { if (this.conn && this.conn.open) { try { this.conn.send(o); } catch (e) {} } },
+  sendTo(gid, o) {
+    if (this.mode !== 'host') return;
+    const c = this.conns.find(c => c._gid === gid);
+    if (c && c.open) { try { c.send(o); } catch (e) {} }
+  },
+  broadcast(o) {
+    if (this.mode !== 'host') return;
+    for (const c of this.conns) {
+      if (c.open) { try { c.send(o); } catch (e) {} }
+    }
+  },
+  connected() {
+    if (this.mode === 'host') return this.conns.some(c => c.open);
+    return !!(this.conn && this.conn.open);
+  },
+  playerCount() { return 1 + this.conns.filter(c => c.open).length; },
+};
+
+const remotes = new Map();
+const SHIRT_PALETTE = ['blue', 'green', 'purple', 'orange', 'teal'];
+function getRemote(gid) {
+  let r = remotes.get(gid);
+  if (!r) {
+    r = {
+      gid, rig: null, active: false,
+      cur: { x: 0, y: 0, z: -80, yaw: 0, roll: 0, pitch: 0, aL: -0.9, aR: -0.9, strokes: 0 },
+      tgt: { x: 0, y: 0, z: -80, yaw: 0, roll: 0, pitch: 0, aL: -0.9, aR: -0.9, strokes: 0 },
+      vx: 0, vz: 0,
+    };
+    remotes.set(gid, r);
+  }
+  return r;
+}
+function ensureRemoteRig(r) {
+  if (!r.rig) {
+    r.rig = buildRig(SHIRT_PALETTE[(r.gid - 1) % SHIRT_PALETTE.length] || 'blue');
+    r.rig.boat.position.set(0, 0, -80);
+    scene.add(r.rig.boat);
+  }
+  r.rig.boat.visible = true;
+}
+
+const WORDS = ['tide', 'otter', 'herring', 'scallop', 'shrimp', 'kelp', 'harbor', 'mussel', 'skipper', 'marlin', 'clam', 'kayak'];
+function makeRoomCode() {
+  const w = () => WORDS[Math.floor(Math.random() * WORDS.length)];
+  return `${w()}-${w()}-${Math.floor(10 + Math.random() * 90)}`;
+}
+
+function showLobbyHost(code) {
+  $('overlay').classList.remove('hidden');
+  $('mpPanel').classList.add('show');
+  $('mpCode').textContent = code;
+  $('mpStatus').textContent = 'waiting for rowers to join…';
+  $('btnBegin').disabled = true;
+  $('btnBegin').style.display = '';
+}
+function showLobbyGuest() {
+  $('mpCode').textContent = 'joined!';
+  $('mpStatus').textContent = 'waiting for the host to start the race…';
+}
+function showOverlayLobby() {
+  $('overlay').classList.remove('hidden');
+}
+
+function countdownStart() {
+  $('overlay').classList.add('hidden');
+  $('btnBegin').disabled = true;
+  const N = net.playerCount();
+  for (const c of net.conns) {
+    if (c.open) c.send({ t: 'goLane', lane: laneX(c._gid, N) });
+  }
+  let n = 5;
+  const tick = () => {
+    if (n > 0) {
+      showMsg(String(n), '#ffe08a');
+      net.broadcast({ t: 'cd', n });
+      A.beep(660, 0.12);
+      n--;
+      setTimeout(tick, 1000);
+    } else {
+      const seed = raceSeed = (Date.now() % 1000000000) | 0;
+      for (const c of net.conns) {
+        if (c.open) c.send({ t: 'go', seed, lane: laneX(c._gid, N) });
+      }
+      A.goBoop();
+      beginRace(seed, laneX(0, N));
+    }
+  };
+  tick();
+}
+
+function onData(d, c) {
+  if (!d || typeof d !== 'object') return;
+  switch (d.t) {
+    case 'hi':
+      break;
+    case 's':
+      if (net.mode === 'host' && c && c._gid != null) {
+        net.lastS.set(c._gid, { x: d.x, y: d.y, z: d.z, yaw: d.yw, roll: d.ro, pitch: d.pi, aL: d.aL, aR: d.aR, st: d.st || 0 });
+      }
+      break;
+    case 'id':
+      net.myId = d.id;
+      showLobbyGuest();
+      break;
+    case 'goLane':
+      S.laneX = d.lane;
+      break;
+    case 'cd':
+      $('overlay').classList.add('hidden');
+      showMsg(String(d.n), '#ffe08a');
+      A.beep(660, 0.12);
+      break;
+    case 'go':
+      A.goBoop();
+      beginRace(d.seed, d.lane);
+      break;
+    case 'r':
+      applyRemoteStates(d.d);
+      break;
+    case 'fin':
+      net.finTimes.set(d.id, d.v);
+      if (net.mode === 'host') {
+        for (const c of net.conns) if (c.open && c._gid !== d.id) c.send({ t: 'finr', v: d.v, id: d.id });
+      }
+      maybeResult();
+      if (!S.finished && !S.capsized) raceOver();
+      break;
+    case 'finr':
+      net.finTimes.set(d.id, d.v);
+      maybeResult();
+      if (!S.finished && !S.capsized) raceOver();
+      break;
+    case 'imp':
+      S.vx += Math.max(-3, Math.min(3, d.ix));
+      S.vz += Math.max(-3, Math.min(3, d.iz));
+      camShake = Math.max(camShake, 0.35);
+      if (Math.hypot(d.ix, d.iz) > 0.35) {
+        A.clank();
+        if (Math.hypot(d.ix, d.iz) > 1.2) A.splash(0.5);
+      }
+      break;
+    case 'boomB': {
+      const m = mineDef[d.id];
+      if (m && !m.exploded) {
+        detonateMine(d.id, d.x, d.z);
+        const d0 = Math.hypot(S.x - (d.x != null ? d.x : m.x), S.z - (d.z != null ? d.z : m.z));
+        if (d0 < 3.4) mineKnockSelf(m);
+      }
+      break;
+    }
+    case 'reset':
+      raceActive = false;
+      endTimer = -1;
+      resetState();
+      if (net.mode === 'guest') showLobbyGuest();
+      break;
+    case 'out':
+      remotes.delete(d.id);
+      break;
+  }
+}
+
+function maybeResult() {
+  oppFin = null;
+  let best = null;
+  for (const [, ft] of net.finTimes) {
+    if (ft != null && (best == null || ft < best)) best = ft;
+  }
+  if (best != null) oppFin = best;
+  if (S.finished) {
+    const win = best == null || S.finishedTime <= best;
+    const standings = best != null ? `fastest rival: ${best.toFixed(2)}s` : 'first to cross!';
+    showMsg(win ? `YOU WIN — ${S.finishedTime.toFixed(2)}s · ${standings}`
+                : `YOU LOSE — ${S.finishedTime.toFixed(2)}s · fast rival ${best.toFixed(2)}s`,
+      win ? '#7bffb2' : '#ff9b9b');
+    A.jingle(win);
+  } else if (best != null) {
+    showMsg(`A RACER FINISHED — ${best.toFixed(2)}s<br><small style="font-size:20px">back to lobby shortly…</small>`, '#ffe08a');
+    A.jingle(false);
+  }
+}
+
+function raceOver(seconds = 5) {
+  endRaceSoon(seconds);
+}
+
+function hostGame() {
+  if (!window.Peer) { showLobbyError('PeerJS failed to load — check your connection'); return; }
+  const code = makeRoomCode();
+  net.mode = 'host';
+  net.code = code;
+  showLobbyHost(code);
+  const peer = new Peer('rowp-' + code);
+  net.peer = peer;
+  const refresh = () => {
+    const n = net.playerCount();
+    if (n >= 2) {
+      $('mpStatus').textContent = `${n} rowers ready — press BEGIN when everyone's in`;
+      $('btnBegin').disabled = false;
+    } else {
+      $('mpStatus').textContent = 'waiting for rowers to join… (any number can race!)';
+      $('btnBegin').disabled = true;
+    }
+  };
+  peer.on('open', refresh);
+  peer.on('connection', c => {
+    if (net.conns.length >= 5) { c.close(); return; }
+    c.on('open', () => {
+      c._gid = net.nextId++;
+      net.conns.push(c);
+      c.send({ t: 'id', id: c._gid });
+      ensureRemoteRig(getRemote(c._gid));
+      refresh();
+    });
+    c.on('data', d => onData(d, c));
+    c.on('close', () => {
+      net.conns = net.conns.filter(x => x !== c);
+      remotes.delete(c._gid);
+      net.broadcast({ t: 'out', id: c._gid });
+      refresh();
+      if (!raceActive) showLobbyHost(net.code);
+    });
+  });
+  peer.on('error', e => brickNet('network error: ' + e.type));
+}
+
+function joinGame(code) {
+  if (!window.Peer) { showOverlayError('PeerJS failed to load — check your connection'); return; }
+  net.mode = 'guest';
+  $('mpPanel').classList.add('show');
+  $('mpStatus').textContent = 'connecting to ' + code + '…';
+  $('btnBegin').style.display = 'none';
+  const peer = new Peer();
+  net.peer = peer;
+  peer.on('open', () => {
+    const c = peer.connect('rowp-' + code);
+    net.conn = c;
+    c.on('open', () => {
+      c.send({ t: 'hi' });
+    });
+    c.on('data', d => onData(d, c));
+    c.on('close', () => brickNet('connection lost'));
+  });
+  peer.on('error', e => brickNet('network error: ' + e.type));
+}
+
+function brickNet(note) {
+  net.conn && (net.conn = null);
+  net.conns = [];
+  remotes.forEach(r => { if (r.rig) r.rig.boat.visible = false; });
+  raceActive = false;
+  setTimeout(() => resetToLobby(), 1500);
+  showMsg('RACER DISCONNECTED', '#ff9b9b');
+  if (note) console.warn(note);
+}
+
+let sendT = 0;
+function selfState() {
+  return { x: +S.x.toFixed(3), y: +S.y.toFixed(3), z: +S.z.toFixed(3),
+    yw: +S.yaw.toFixed(3), ro: +S.roll.toFixed(3), pi: +S.pitch.toFixed(3),
+    aL: +S.aL.toFixed(3), aR: +S.aR.toFixed(3), st: S.strokes };
+}
+function netFrame(dt) {
+  if (net.mode === 'guest') {
+    if (net.connected()) {
+      sendT -= dt;
+      if (sendT <= 0) {
+        sendT = 0.075;
+        net.send({ t: 's', ...selfState() });
+      }
+    }
+    return;
+  }
+  if (net.mode !== 'host') return;
+  sendT -= dt;
+  if (sendT <= 0) {
+    sendT = 0.075;
+    const list = [{ id: 0, ...selfState() }];
+    for (const [gid, st] of net.lastS) {
+      list.push({ id: gid, x: st.x, y: st.y, z: st.z, yw: st.yaw, ro: st.roll, pi: st.pitch, aL: st.aL, aR: st.aR, st: st.st });
+    }
+    net.broadcast({ t: 'r', d: list });
+    applyRemoteStates(list.filter(e => e.id !== net.myId && e.id !== 0));
+  }
+}
+
+function applyRemoteStates(list) {
+  for (const st of list) {
+    if (net.mode === 'host' && st.id === 0) continue;
+    if (st.id === net.myId) continue;
+    const r = getRemote(st.id);
+    ensureRemoteRig(r);
+    r.tgt = { x: st.x, y: st.y, z: st.z, yaw: st.yw, roll: st.ro, pitch: st.pi, aL: st.aL, aR: st.aR, strokes: st.st || 0 };
+    if (!r.active) {
+      for (const k in r.cur) r.cur[k] = r.tgt[k];
+      r.active = true;
+    }
+  }
+}
+
+function initUIMulti() {
+  $('btnSolo').onclick = () => {
+    net.mode = '';
+    $('overlay').classList.add('hidden');
+    beginRace((Math.random() * 1e9) | 0);
+  };
+  $('btnHost').onclick = () => hostGame();
+  $('btnJoin').onclick = () => {
+    const code = $('joinCode').value.trim().toLowerCase();
+    if (!code) return;
+    joinGame(code);
+  };
+  $('btnBegin').onclick = () => { if (net.connected() && net.mode === 'host') countdownStart(); };
+}
+
+/* ============================================================
+   CAMERA + LOOP
+   ============================================================ */
+const camTarget = new THREE.Vector3(0, 0, 0);
+const camPos = new THREE.Vector3(0, 3.4, -8);
+const desired = new THREE.Vector3();
+const look = new THREE.Vector3();
+
+function updateCamera(dt) {
+  const fx = Math.sin(S.yaw), fz = Math.cos(S.yaw);
+  let camDist = 7.5, camH = 3.4;
+  const lookPt = { x: S.x + fx * 4, z: S.z + fz * 4, h: 0.6 };
+  const nr = nearestRemote();
+  if (nr.r && raceActive && nr.d < 26) {
+    const w = (1 - nr.d / 26) * 0.6;
+    lookPt.x += (nr.r.cur.x - lookPt.x) * w;
+    lookPt.z += (nr.r.cur.z - lookPt.z) * w;
+    camDist += w * 2.2;
+    camH += w * 0.7;
+  }
+  desired.set(S.x - fx * camDist, S.y + camH, S.z - fz * camDist);
+  camPos.lerp(desired, Math.min(1, 3.5 * dt));
+  camera.position.copy(camPos);
+  if (camShake > 0) {
+    camShake = Math.max(0, camShake - dt);
+    camera.position.x += (Math.random() - 0.5) * camShake * 0.5;
+    camera.position.y += (Math.random() - 0.5) * camShake * 0.4;
+    camera.position.z += (Math.random() - 0.5) * camShake * 0.5;
+  }
+  look.set(lookPt.x, S.y + lookPt.h, lookPt.z);
+  camTarget.lerp(look, Math.min(1, 5 * dt));
+  camera.lookAt(camTarget);
+
+  if (raceActive && nr.r && nr.d > 18) {
+    const dOppX = nr.r.cur.x - S.x, dOppZ = nr.r.cur.z - S.z;
+    const fwdComp = dOppX * fx + dOppZ * fz;
+    const sideComp = dOppX * Math.cos(S.yaw) - dOppZ * Math.sin(S.yaw);
+    const ang = Math.atan2(sideComp, fwdComp);
+    $('oppArrow').style.display = 'block';
+    $('oppArrow').style.transform = `translate(-50%,-50%) rotate(${ang * 180 / Math.PI}deg)`;
+  } else {
+    $('oppArrow').style.display = 'none';
+  }
+}
+
+let started = false;
+let last = performance.now();
+
+function updateRemoteBoats(dt) {
+  for (const r of remotes.values()) {
+    if (!r.active || !r.rig) continue;
+    const c = r.cur, t = r.tgt;
+    const k = Math.min(1, dt * 8);
+    c.x += (t.x - c.x) * k; c.y += (t.y - c.y) * k; c.z += (t.z - c.z) * k;
+    c.yaw += (t.yaw - c.yaw) * k; c.roll += (t.roll - c.roll) * k; c.pitch += (t.pitch - c.pitch) * k;
+    c.aL += (t.aL - c.aL) * k; c.aR += (t.aR - c.aR) * k;
+    r.vx = (t.x - c.x) * 8;   // velocity estimate for collisions
+    r.vz = (t.z - c.z) * 8;
+    r.rig.boat.position.set(c.x, c.y, c.z);
+    r.rig.boat.rotation.order = 'YXZ';
+    r.rig.boat.rotation.y = c.yaw;
+    r.rig.boat.rotation.x = c.pitch;
+    r.rig.boat.rotation.z = c.roll;
+    applyRigPose(r.rig, c.aL, c.aR);
+  }
+}
+
+function nearestRemote() {
+  let best = null, bd = Infinity;
+  for (const r of remotes.values()) {
+    if (!r.active) continue;
+    const d = Math.hypot(r.cur.x - S.x, r.cur.z - S.z);
+    if (d < bd) { bd = d; best = r; }
+  }
+  return { r: best, d: bd };
+}
+
+/* ============================================================
+   COLLISIONS — local boat/oars vs remote boat
+   ============================================================ */
+const COLL_R = 0.85;
+const COLL_OFFSETS = [-1.5, 0, 1.5];
+let lastImpT = 0;
+let contactClock = 0;
+let lastContactT = -10;
+
+function hullCircles(px, pz, yaw) {
+  const sy = Math.sin(yaw), cy = Math.cos(yaw);
+  return COLL_OFFSETS.map(zo => [px + sy * zo, pz + cy * zo]);
+}
+
+function collide(dt) {
+  if (!raceActive || remotes.size === 0) return;
+  contactClock += dt;
+  const minD = COLL_R * 2;
+  let impX = 0, impZ = 0, hullImpact = 0;
+  let bladeHit = 0;
+  let impTarget = -1;
+
+  for (const r of remotes.values()) {
+    if (!r.active) continue;
+    const localPts = hullCircles(S.x, S.z, S.yaw);
+    const remotePts = hullCircles(r.cur.x, r.cur.z, r.cur.yaw);
+    const rvx = r.vx || 0, rvz = r.vz || 0;
+    let rImpX = 0, rImpZ = 0;
+    for (const a of localPts) {
+      for (const b of remotePts) {
+        const dx = a[0] - b[0], dz = a[1] - b[1];
+        const d = Math.hypot(dx, dz) || 0.001;
+        if (d >= minD) continue;
+        const nx = dx / d, nz = dz / d;
+        const overlap = Math.min(0.3, (minD - d) * 0.45);
+        S.x += nx * overlap;
+        S.z += nz * overlap;
+        const vr = (S.vx - rvx) * nx + (S.vz - rvz) * nz;
+        if (vr < 0) {
+          const jm = -vr * 0.62;
+          hullImpact = Math.max(hullImpact, -vr);
+          S.vx += nx * jm;
+          S.vz += nz * jm;
+          rImpX -= nx * jm;
+          rImpZ -= nz * jm;
+        }
+      }
+    }
+    let bladeHitLocal = 0;
+    for (const tip of [tipWorld(S.aL, -1), tipWorld(S.aR, 1)]) {
+      const [tipX, tipY, tipZ] = tip;
+      if (tipY > 0.45) continue;
+      for (const b of remotePts) {
+        const dx = tipX - b[0], dz = tipZ - b[1];
+        const d = Math.hypot(dx, dz) || 0.001;
+        const minB = COLL_R + 0.15;
+        if (d >= minB) continue;
+        const nx = dx / d, nz = dz / d;
+        bladeHitLocal = Math.max(bladeHitLocal, minB - d);
+        rImpX += nx * 0.35;
+        rImpZ += nz * 0.35;
+        S.x += nx * 0.04; S.z += nz * 0.04;
+        S.yawVel += (Math.random() - 0.5) * 0.3;
+      }
+    }
+    if (bladeHitLocal) { bladeHit = 1; S.aLv += (Math.random() - 0.5) * 1.2; }
+    if (rImpX || rImpZ) {
+      impX += rImpX; impZ += rImpZ; impTarget = r.gid;
+    }
+  }
+
+  if (hullImpact > 0.4 && contactClock - lastContactT > 0.25) {
+    lastContactT = contactClock;
+    A.splash(Math.min(1, hullImpact * 0.4 + 0.2));
+    camShake = Math.max(camShake, Math.min(0.5, hullImpact * 0.3));
+  } else if (bladeHit && contactClock - lastContactT > 0.2) {
+    lastContactT = contactClock;
+    A.clank();
+  }
+
+  if (impTarget >= 0 && contactClock - lastImpT > 0.06 && Math.abs(impX) + Math.abs(impZ) > 0.05) {
+    lastImpT = contactClock;
+    const msg = { t: 'imp', ix: Math.max(-3, Math.min(3, +impX.toFixed(3))), iz: Math.max(-3, Math.min(3, +impZ.toFixed(3))) };
+    if (net.mode === 'host') net.sendTo(impTarget, msg);
+    else net.send(msg);
+  }
+}
+
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((now - last) / 1000, 1 / 20);
+  last = now;
+
+  started = raceActive;
+  if (started) {
+    const sub = Math.max(1, Math.ceil(dt / (1 / 120)));
+    for (let i = 0; i < sub; i++) step(dt / sub);
+  }
+
+  if (endTimer >= 0) {
+    endTimer -= dt;
+    if (endTimer <= 0) {
+      endTimer = -1;
+      if (net.mode === 'host') {
+        resetToLobby();
+        net.send({ t: 'reset' });
+      } else if (net.mode === 'guest') {
+        net.send({ t: 'reset' });
+      } else {
+        resetToLobby();
+      }
+    }
+  }
+
+  water.position.x = S.x;
+  water.position.z = S.z;
+  waterUniforms.uTime.value = started ? S.t : now / 1000;
+
+  updateGulls(dt);
+  if (splashT < 0.7) {
+    splashT += dt;
+    const k = splashT / 0.7;
+    splashRing.scale.setScalar(0.4 + k * 2.6);
+    splashRing.material.opacity = 0.85 * (1 - k);
+    if (splashT >= 0.7) splashRing.visible = false;
+  }
+  updateRemoteBoats(dt);
+  collide(dt);
+  netFrame(dt);
+  checkMines();
+  if (flashT < 0.55) {
+    flashT += dt;
+    const k = flashT / 0.55;
+    flashMesh.scale.setScalar(0.4 + k * 3.2);
+    flashMesh.material.opacity = 0.95 * (1 - k);
+    if (flashT >= 0.55) flashMesh.visible = false;
+  }
+  mineLed.emissiveIntensity = 1.6 + Math.sin(now / 1000 * 6) * 1.4;
+  mines.children.forEach((grp, i) => {
+    if (mineDef[i] && !mineDef[i].exploded) {
+      grp.position.y = waveHeight(grp.position.x, grp.position.z, S.t) - 0.08;
+      grp.rotation.y += dt * 0.25;
+    }
+  });
+
+  updateCamera(dt);
+
+  $('dist').innerHTML = `${Math.max(0, S.z).toFixed(1)}<small> / ${GOAL} m</small>`;
+  $('time').textContent = `${S.t.toFixed(2)} s`;
+  $('stroke').textContent = `${S.strokes} strokes · heading ${(S.yaw * 180 / Math.PI).toFixed(0)}°`;
+  $('pb').textContent = pb ? `PB: ${pb.toFixed(2)}s` : '';
+  if (net.mode === 'guest' || net.mode === 'host') {
+    const lines = [];
+    let shown = 0;
+    for (const r of remotes.values()) {
+      if (!r.active || lines.length >= 5) continue;
+      lines.push(`Racer ${r.gid}: ${Math.max(0, r.cur.z).toFixed(1)} m · ${r.cur.strokes} strokes`);
+    }
+    if (lines.length) {
+      $('opp').style.display = 'block';
+      $('opp').innerHTML = lines.join('<br>');
+    } else {
+      $('opp').style.display = 'none';
+    }
+  } else {
+    $('opp').style.display = 'none';
+  }
+
+  renderer.render(scene, camera);
+}
+
+/* mobile touch controls */
+function initTouch() {
+  const map = { bQ: 'KeyQ', bW: 'KeyW', bO: 'KeyO', bP: 'KeyP' };
+  for (const [id, code] of Object.entries(map)) {
+    const b = document.getElementById(id);
+    const down = e => { e.preventDefault(); keys[code] = true; };
+    const up = e => { e.preventDefault(); keys[code] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('pointerleave', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  document.getElementById('bM').addEventListener('pointerdown', e => { e.preventDefault(); A.toggleMusic(); });
+}
+
+/* boot */
+initUIMulti();
+initTouch();
+if (location.search.indexOf('demo') >= 0) {
+  const ov = $('overlay');
+  ov.classList.add('hidden');
+  ov.style.display = 'none';
+  $('msg').style.opacity = 0;
+  beginRace(123456);
+  keys.KeyQ = true; keys.KeyO = true;
+  for (let i = 0; i < 390; i++) step(1 / 60);
+  updateGulls(1 / 60);
+}
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
