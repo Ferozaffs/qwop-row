@@ -29,6 +29,9 @@
   #overlay button{font-size:19px;padding:11px 34px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;cursor:pointer;letter-spacing:2px;margin:6px;}
   #overlay button:hover:not(:disabled){background:rgba(255,255,255,.25);}
   #overlay button:disabled{opacity:.35;cursor:default;}
+  #styleRow{display:flex;align-items:center;gap:8px;margin-top:14px;}
+  #styleRow button{font-size:15px;padding:8px 18px;margin:0;}
+  #styleRow button.active{background:rgba(255,215,107,.35);border-color:#ffd76b;}
   #modeRow{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
   #joinRow{display:flex;gap:8px;justify-content:center;margin-top:6px;}
   #joinCode{font-size:20px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.3);color:#fff;text-transform:lowercase;width:190px;font-family:monospace;}
@@ -66,23 +69,24 @@
 <div id="stroke" class="hud"></div>
 <div id="msg" class="hud"></div>
 
-<div id="keys" class="hud">
-  <span class="lbl">LEFT OAR</span> <b>Q</b>/<b>W</b> sweep <b>E</b>/<b>R</b> lift
-  &nbsp;&nbsp;|&nbsp;&nbsp;
-  <span class="lbl">RIGHT OAR</span> <b>U</b>/<b>I</b> sweep <b>O</b>/<b>P</b> lift
-  &nbsp;&nbsp;|&nbsp;&nbsp; <b>M</b> music
-</div>
+<div id="keys" class="hud"></div>
 
 <div id="overlay">
   <h1>R O W P</h1>
-  <h2>steer between the yellow buoys to finish. seagulls bite.</h2>  <div class="k">
+  <h2>steer between the yellow buoys to finish. seagulls bite.</h2>
+  <div class="k" id="ctrlHelp">
     <b>Q</b><b>W</b><b>E</b><b>R</b> left oar &nbsp; <b>U</b><b>I</b><b>O</b><b>P</b> right oar
   </div>
-  <p>
+  <div id="styleRow">
+    <span style="opacity:.6;font-size:13px;">CONTROLS:</span>
+    <button id="btnStyleSpin">SPIN (360° oars)</button>
+    <button id="btnStyleSweep">SWING ±90° + LIFT</button>
+  </div>
+  <p id="ctrlDesc">
     Each oar has its rotation AND lift under your control. One stroke, the
     full circle: <b>R</b> dunk the blade, <b>Q</b> sweep it aft through the
-    water, <b>E</b> lift it out, <b>W</b> swing it forward, repeat. Right
-    oar: dunk <b>P</b>, pull <b>U</b>, lift <b>O</b>, forward <b>I</b>.
+    water, <b>W</b> lift it out, <b>E</b> swing it forward, repeat. Right
+    oar: dunk <b>P</b>, pull <b>U</b>, lift <b>I</b>, forward <b>O</b>.
     Feathers only exist where you put them — blade in the water going the
     wrong way is a brake. Mines, seagulls and waves do the rest.
   </p>
@@ -747,7 +751,7 @@ document.addEventListener('keydown', () => A.ensure(), { once: true });
 /* ============================================================
    SEA MINES — deterministic per race seed, proximity blast
    ============================================================ */
-const MINE_COUNT = 22;
+const MINE_COUNT = 30;
 const mineMat = new THREE.MeshStandardMaterial({ color: 0x16202a, roughness: 0.45, metalness: 0.4 });
 const mineLed = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff2200, emissiveIntensity: 2 });
 
@@ -782,7 +786,7 @@ function spawnMines(seedRng) {
     const led = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), mineLed);
     led.position.y = 0.28;
     grp.add(led);
-    const mx = (seedRng() * 2 - 1) * 10.5;
+    const mx = (seedRng() * 2 - 1) * 21;
     const mz = 10 + (i * 86) / MINE_COUNT + seedRng() * 3.2;
     grp.position.set(mx, waveHeight(mx, mz, S.t) - 0.1, mz);
     mines.add(grp);
@@ -924,6 +928,7 @@ function showMsg(txt, color) {
 }
 
 let raceActive = false;
+let controlStyle = localStorage.getItem('rowp_style') || 'spin';
 
 function laneX(idx, n) {
   const off = idx - (n - 1) / 2;
@@ -971,6 +976,31 @@ function beginRace(seed, lane) {
   camPos.set(0, 3.4, -8);
   $('overlay').classList.add('hidden');
   A.goBoop();
+}
+
+function setControlStyle(style) {
+  controlStyle = style;
+  localStorage.setItem('rowp_style', style);
+  $('btnStyleSpin').classList.toggle('active', style === 'spin');
+  $('btnStyleSweep').classList.toggle('active', style === 'sweep');
+  $('ctrlHelp').innerHTML = style === 'spin'
+    ? '<b>Q</b>/<b>W</b> left oar spin &nbsp; <b>O</b>/<b>P</b> right oar spin'
+    : '<b>Q</b>/<b>E</b> left sweep &nbsp; <b>W</b>/<b>R</b> left lift &nbsp; <b>U</b>/<b>O</b> right sweep &nbsp; <b>I</b>/<b>P</b> right lift';
+  $('ctrlDesc').innerHTML = style === 'spin'
+    ? 'Classic rowing: press <b>Q</b>/<b>W</b> to spin the left oar in a full circle, <b>O</b>/<b>P</b> for the right. The blade dips and lifts itself as it rotates — find the power arc, avoid the backwater. Mines, seagulls and waves do the rest.'
+    : 'Each oar has sweep AND lift: <b>R</b> dunk, <b>Q</b> pull aft, <b>W</b> lift, <b>E</b> swing forward (right oar: <b>P</b>, <b>U</b>, <b>I</b>, <b>O</b>). The sweep is limited to ±90° — row the full rotation by timing lift and dunk. Mines, seagulls and waves do the rest.';
+  updateKeysHud();
+}
+
+function updateKeysHud() {
+  $('keys').innerHTML = controlStyle === 'spin'
+    ? `<span class="lbl">LEFT OAR</span> <b>Q</b>/<b>W</b> spin&nbsp;&nbsp;|&nbsp;&nbsp;<span class="lbl">RIGHT OAR</span> <b>O</b>/<b>P</b> spin&nbsp;&nbsp;|&nbsp;&nbsp;<b>M</b> music`
+    : `<span class="lbl">LEFT OAR</span> <b>Q</b>/<b>E</b> sweep <b>W</b>/<b>R</b> lift&nbsp;&nbsp;|&nbsp;&nbsp;<span class="lbl">RIGHT OAR</span> <b>U</b>/<b>O</b> sweep <b>I</b>/<b>P</b> lift&nbsp;&nbsp;|&nbsp;&nbsp;<b>M</b> music`;
+}
+
+function initStyleUI() {
+  $('btnStyleSpin').onclick = () => setControlStyle('spin');
+  $('btnStyleSweep').onclick = () => setControlStyle('sweep');
 }
 
 let endTimer = -1;
@@ -1085,16 +1115,38 @@ function step(dt) {
     prevSubL = subL; prevSubR = subR;
   }
   const kk = raceActive ? keys : EMPTY;
-  const kL = clamp1((kk.KeyQ ? 1 : 0) - (kk.KeyW ? 1 : 0) + touchAxisL.x);
-  const kR = clamp1((kk.KeyU ? 1 : 0) - (kk.KeyI ? 1 : 0) + touchAxisR.x);
-  const hL = clamp1((kk.KeyE ? 1 : 0) - (kk.KeyR ? 1 : 0) + touchAxisL.y);
-  const hR = clamp1((kk.KeyO ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.y);
+  const spin = controlStyle === 'spin';
+  const kL = spin
+    ? clamp1((kk.KeyQ ? 1 : 0) - (kk.KeyW ? 1 : 0) + touchAxisL.x)
+    : clamp1((kk.KeyQ ? 1 : 0) - (kk.KeyE ? 1 : 0) + touchAxisL.x);
+  const kR = spin
+    ? clamp1((kk.KeyO ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.x)
+    : clamp1((kk.KeyU ? 1 : 0) - (kk.KeyO ? 1 : 0) + touchAxisR.x);
+  let hL, hR;
+  if (spin) {
+    // blade depth follows the sweep automatically (like classic rowing oars)
+    const uL = Math.cos(S.aL), uR = Math.cos(S.aR);
+    const dL = uL > 0 ? -0.52 * uL * uL : 0.55 * uL * uL;
+    const dR = uR > 0 ? -0.52 * uR * uR : 0.55 * uR * uR;
+    const lamL = Math.asin(Math.max(-0.98, Math.min(0.98, dL)));
+    const lamR = Math.asin(Math.max(-0.98, Math.min(0.98, dR)));
+    hL = clamp1((lamL - S.lL) * 4.5);
+    hR = clamp1((lamR - S.lR) * 4.5);
+  } else {
+    hL = clamp1((kk.KeyW ? 1 : 0) - (kk.KeyR ? 1 : 0) + touchAxisL.y);
+    hR = clamp1((kk.KeyI ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.y);
+  }
   S.aLv = oarAxisStep(S.aLv, kL, loadL, dt);
   S.aRv = oarAxisStep(S.aRv, kR, loadR, dt);
-  S.aL = Math.max(SWEEP_MIN, Math.min(SWEEP_MAX, S.aL + S.aLv * dt));
-  S.aR = Math.max(SWEEP_MIN, Math.min(SWEEP_MAX, S.aR + S.aRv * dt));
-  if ((S.aL <= SWEEP_MIN || S.aL >= SWEEP_MAX) && Math.sign(S.aLv) === Math.sign(S.aL)) S.aLv = 0;
-  if ((S.aR <= SWEEP_MIN || S.aR >= SWEEP_MAX) && Math.sign(S.aRv) === Math.sign(S.aR)) S.aRv = 0;
+  if (spin) {
+    S.aL += S.aLv * dt;
+    S.aR += S.aRv * dt;
+  } else {
+    S.aL = Math.max(SWEEP_MIN, Math.min(SWEEP_MAX, S.aL + S.aLv * dt));
+    S.aR = Math.max(SWEEP_MIN, Math.min(SWEEP_MAX, S.aR + S.aRv * dt));
+    if ((S.aL <= SWEEP_MIN || S.aL >= SWEEP_MAX) && Math.sign(S.aLv) === Math.sign(S.aL)) S.aLv = 0;
+    if ((S.aR <= SWEEP_MIN || S.aR >= SWEEP_MAX) && Math.sign(S.aRv) === Math.sign(S.aR)) S.aRv = 0;
+  }
   S.lLv = oarLiftStep(S.lLv, hL, subL > 0.3, dt);
   S.lRv = oarLiftStep(S.lRv, hR, subR > 0.3, dt);
   S.lL = Math.max(LIFT_MIN, Math.min(LIFT_MAX, S.lL + S.lLv * dt));
@@ -1284,8 +1336,11 @@ function showLobbyHost(code) {
   $('btnBegin').style.display = '';
 }
 function showLobbyGuest() {
+  $('overlay').classList.remove('hidden');
+  $('mpPanel').classList.add('show');
+  $('mpPanel').style.display = '';
   $('mpCode').textContent = 'joined!';
-  $('mpStatus').textContent = 'waiting for the host to start the race…';
+  $('mpStatus').textContent = `connected — ${controlStyle} controls (host's choice). Waiting for start…`;
 }
 function showOverlayLobby() {
   $('overlay').classList.remove('hidden');
@@ -1330,6 +1385,10 @@ function onData(d, c) {
       break;
     case 'id':
       net.myId = d.id;
+      if (d.style) {
+        controlStyle = d.style;
+        setControlStyle(controlStyle);
+      }
       showLobbyGuest();
       break;
     case 'goLane':
@@ -1439,7 +1498,7 @@ function hostGame() {
     c.on('open', () => {
       c._gid = net.nextId++;
       net.conns.push(c);
-      c.send({ t: 'id', id: c._gid });
+      c.send({ t: 'id', id: c._gid, style: controlStyle });
       ensureRemoteRig(getRemote(c._gid));
       refresh();
     });
@@ -1836,6 +1895,8 @@ function initTouch() {
 }
 
 /* boot */
+initStyleUI();
+setControlStyle(controlStyle);
 initUIMulti();
 initTouch();
 if (location.search.indexOf('demo') >= 0) {
@@ -1843,15 +1904,16 @@ if (location.search.indexOf('demo') >= 0) {
   ov.classList.add('hidden');
   ov.style.display = 'none';
   $('msg').style.opacity = 0;
+  controlStyle = 'sweep';
   beginRace(123456);
   const kk = keys;
   for (let i = 0; i < 390; i++) {
     const norm = a => { a = ((a % TAU) + TAU) % TAU; return a > Math.PI ? a - TAU : a; };
     const raL = norm(S.aL), raR = norm(S.aR);
-    kk.KeyW = S.lL > 0.45 && raL > -0.35;       // forward swing while blade is raised
+    kk.KeyE = S.lL > 0.45 && raL > -0.35;       // forward swing while blade is raised
     kk.KeyR = raL < -0.3 && S.lL > 0.2;         // dunk when parked forward
     kk.KeyQ = S.lL < 0.1 && raL < 0.95;         // pull once blade is deep, until it's aft
-    kk.KeyE = raL > 0.95;                       // lift at the end of the stroke
+    kk.KeyW = raL > 0.95;                       // lift at the end of the stroke
     kk.KeyP = (raR < -0.3 && S.lR > 0.2);
     kk.KeyU = (S.lR < 0.1 && raR < 0.95);
     kk.KeyO = raR > 0.95;
