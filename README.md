@@ -26,7 +26,7 @@ seagulls are *unforgivable*.
 - Cross the finish line **between the yellow buoys** — miss the gate and you have
   to row back.
 - Both oars in sync row straight; one side at a time steers.
-- **Watch out for:** waves, sea mines (they explode… loudly), and seagulls that
+- **Watch out for:** waves (weather is randomized every race — seas can rage up to 5× and the sky turns on you), a dense **sea mine** field (they explode… loudly), and seagulls that
   dive-bomb your hull and knock it around.
 
 ## Multiplayer races
