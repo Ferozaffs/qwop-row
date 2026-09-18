@@ -984,18 +984,18 @@ function setControlStyle(style) {
   $('btnStyleSpin').classList.toggle('active', style === 'spin');
   $('btnStyleSweep').classList.toggle('active', style === 'sweep');
   $('ctrlHelp').innerHTML = style === 'spin'
-    ? '<b>Q</b>/<b>W</b> left oar spin &nbsp; <b>O</b>/<b>P</b> right oar spin'
-    : '<b>Q</b>/<b>E</b> left sweep &nbsp; <b>W</b>/<b>R</b> left lift &nbsp; <b>U</b>/<b>O</b> right sweep &nbsp; <b>I</b>/<b>P</b> right lift';
+    ? '<b>Q</b>/<b>W</b> left oar (fwd/aft spin) &nbsp; <b>O</b>/<b>P</b> right oar spin'
+    : '<b>E</b>/<b>Q</b> left pull / fwd &nbsp; <b>W</b>/<b>R</b> left lift / dunk &nbsp; <b>U</b>/<b>O</b> right pull / fwd &nbsp; <b>I</b>/<b>P</b> right lift / dunk';
   $('ctrlDesc').innerHTML = style === 'spin'
-    ? 'Classic rowing: press <b>Q</b>/<b>W</b> to spin the left oar in a full circle, <b>O</b>/<b>P</b> for the right. The blade dips and lifts itself as it rotates — find the power arc, avoid the backwater. Mines, seagulls and waves do the rest.'
-    : 'Each oar has sweep AND lift: <b>R</b> dunk, <b>Q</b> pull aft, <b>W</b> lift, <b>E</b> swing forward (right oar: <b>P</b>, <b>U</b>, <b>I</b>, <b>O</b>). The sweep is limited to ±90° — row the full rotation by timing lift and dunk. Mines, seagulls and waves do the rest.';
+    ? 'Classic rowing: press <b>Q</b>/<b>W</b> to spin the left oar, <b>O</b>/<b>P</b> for the right. The blade dips and lifts itself as it rotates — find the power arc, avoid the backwater. Mines, seagulls and waves do the rest.'
+    : 'Each oar has sweep AND lift: <b>R</b> dunk, <b>E</b> pull aft, <b>W</b> lift, <b>Q</b> swing forward (right oar: <b>P</b>, <b>U</b>, <b>I</b>, <b>O</b>). The sweep is limited to ±90° — row the full rotation by timing lift and dunk. Mines, seagulls and waves do the rest.';
   updateKeysHud();
 }
 
 function updateKeysHud() {
   $('keys').innerHTML = controlStyle === 'spin'
     ? `<span class="lbl">LEFT OAR</span> <b>Q</b>/<b>W</b> spin&nbsp;&nbsp;|&nbsp;&nbsp;<span class="lbl">RIGHT OAR</span> <b>O</b>/<b>P</b> spin&nbsp;&nbsp;|&nbsp;&nbsp;<b>M</b> music`
-    : `<span class="lbl">LEFT OAR</span> <b>Q</b>/<b>E</b> sweep <b>W</b>/<b>R</b> lift&nbsp;&nbsp;|&nbsp;&nbsp;<span class="lbl">RIGHT OAR</span> <b>U</b>/<b>O</b> sweep <b>I</b>/<b>P</b> lift&nbsp;&nbsp;|&nbsp;&nbsp;<b>M</b> music`;
+    : `<span class="lbl">LEFT OAR</span> <b>Q</b>/<b>E</b> fwd/pull <b>W</b>/<b>R</b> lift/dunk&nbsp;&nbsp;|&nbsp;&nbsp;<span class="lbl">RIGHT OAR</span> <b>U</b>/<b>O</b> fwd/pull <b>I</b>/<b>P</b> lift/dunk&nbsp;&nbsp;|&nbsp;&nbsp;<b>M</b> music`;
 }
 
 function initStyleUI() {
@@ -1117,8 +1117,8 @@ function step(dt) {
   const kk = raceActive ? keys : EMPTY;
   const spin = controlStyle === 'spin';
   const kL = spin
-    ? clamp1((kk.KeyQ ? 1 : 0) - (kk.KeyW ? 1 : 0) + touchAxisL.x)
-    : clamp1((kk.KeyQ ? 1 : 0) - (kk.KeyE ? 1 : 0) + touchAxisL.x);
+    ? clamp1((kk.KeyW ? 1 : 0) - (kk.KeyQ ? 1 : 0) + touchAxisL.x)
+    : clamp1((kk.KeyE ? 1 : 0) - (kk.KeyQ ? 1 : 0) + touchAxisL.x);
   const kR = spin
     ? clamp1((kk.KeyO ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.x)
     : clamp1((kk.KeyU ? 1 : 0) - (kk.KeyO ? 1 : 0) + touchAxisR.x);
@@ -1910,9 +1910,9 @@ if (location.search.indexOf('demo') >= 0) {
   for (let i = 0; i < 390; i++) {
     const norm = a => { a = ((a % TAU) + TAU) % TAU; return a > Math.PI ? a - TAU : a; };
     const raL = norm(S.aL), raR = norm(S.aR);
-    kk.KeyE = S.lL > 0.45 && raL > -0.35;       // forward swing while blade is raised
+    kk.KeyQ = S.lL > 0.45 && raL > -0.35;       // forward swing while blade is raised (Q = fwd after flip)
     kk.KeyR = raL < -0.3 && S.lL > 0.2;         // dunk when parked forward
-    kk.KeyQ = S.lL < 0.1 && raL < 0.95;         // pull once blade is deep, until it's aft
+    kk.KeyE = S.lL < 0.1 && raL < 0.95;         // pull once blade is deep, until it's aft
     kk.KeyW = raL > 0.95;                       // lift at the end of the stroke
     kk.KeyP = (raR < -0.3 && S.lR > 0.2);
     kk.KeyU = (S.lR < 0.1 && raR < 0.95);
@@ -1920,7 +1920,7 @@ if (location.search.indexOf('demo') >= 0) {
     kk.KeyI = (S.lR > 0.45 && raR > -0.35);
     step(1 / 60);
   }
-  kk.KeyQ = true; kk.KeyU = true;
+  kk.KeyE = true; kk.KeyU = true;
   updateGulls(1 / 60);
 }
 addEventListener('resize', () => {
