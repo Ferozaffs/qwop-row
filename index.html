@@ -337,21 +337,21 @@ function buildRig(shirtColor) {
     return grp;
   }
   const oarL = makeOar();
-  oarL.position.set(-OARLOCK_X, 0.32, OARLOCK_Z);
+  oarL.position.set(OARLOCK_X, 0.32, OARLOCK_Z);
   boat.add(oarL);
   const oarR = makeOar();
-  oarR.position.set(OARLOCK_X, 0.32, OARLOCK_Z);
+  oarR.position.set(-OARLOCK_X, 0.32, OARLOCK_Z);
   boat.add(oarR);
   const lockGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.2, 6);
-  const lockL = new THREE.Mesh(lockGeo, woodDark); lockL.position.set(-OARLOCK_X - 0.03, 0.3, OARLOCK_Z);
-  const lockR = new THREE.Mesh(lockGeo, woodDark); lockR.position.set(OARLOCK_X + 0.03, 0.3, OARLOCK_Z);
+  const lockL = new THREE.Mesh(lockGeo, woodDark); lockL.position.set(OARLOCK_X + 0.03, 0.3, OARLOCK_Z);
+  const lockR = new THREE.Mesh(lockGeo, woodDark); lockR.position.set(-OARLOCK_X - 0.03, 0.3, OARLOCK_Z);
   boat.add(lockL, lockR);
 
   return { boat, oarL, oarR, rower, torso, head, armL, armR, legL, legR };
 }
 
 function applyRigPose(rig, aL, lL, aR, lR) {
-  for (const [oar, a, l, side] of [[rig.oarL, aL, lL, -1], [rig.oarR, aR, lR, 1]]) {
+  for (const [oar, a, l, side] of [[rig.oarL, aL, lL, 1], [rig.oarR, aR, lR, -1]]) {
     oar.rotation.order = 'YXZ';
     oar.rotation.x = Math.max(-1.2, Math.min(1.4, l));
     oar.rotation.y = Math.atan2(-side * Math.cos(a), Math.sin(a));
@@ -1084,8 +1084,8 @@ function step(dt) {
   const fx = sY, fz = cY;
   const rx = cY, rz = -sY;
 
-  const [tlx, tly, tlz] = tipWorld(S.aL, S.lL, -1);
-  const [trx, try_, trz] = tipWorld(S.aR, S.lR, 1);
+  const [tlx, tly, tlz] = tipWorld(S.aL, S.lL, 1);
+  const [trx, try_, trz] = tipWorld(S.aR, S.lR, -1);
   const tL = tipLocal(S.aL, S.lL, -1);
   const tR = tipLocal(S.aR, S.lR, 1);
 
@@ -1729,7 +1729,7 @@ function collide(dt) {
       }
     }
     let bladeHitLocal = 0;
-    for (const tip of [tipWorld(S.aL, S.lL, -1), tipWorld(S.aR, S.lR, 1)]) {
+    for (const tip of [tipWorld(S.aL, S.lL, 1), tipWorld(S.aR, S.lR, -1)]) {
       const [tipX, tipY, tipZ] = tip;
       if (tipY > 0.45) continue;
       for (const b of remotePts) {
