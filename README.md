@@ -13,14 +13,16 @@ seagulls are *unforgivable*.
 
 | Key | Action |
 |-----|--------|
-| `Q` / `W` | Spin left oar clockwise / counter-clockwise |
-| `O` / `P` | Spin right oar clockwise / counter-clockwise |
+| `Q` / `W` | Left oar sweep aft / forward |
+| `E` / `R` | Left oar lift / dunk |
+| `U` / `I` | Right oar sweep aft / forward |
+| `O` / `P` | Right oar lift / dunk |
 | `M` | Toggle music |
-| `R` | Back to menu (if a race ends) |
 
-- Each oar rotates in a **full circle** around its oarlock. Dip the blade in, pull
-  it through the water, lift it over the hull on the recovery.
-- Rotating the **wrong way** backwaters the blade and kills your speed.
+- Each oar has two axes — **sweep** and **lift** — so a proper circular stroke
+  is: *dunk* the blade, *pull* it through the water, *lift* it out, *swing*
+  forward, repeat. Miss a phase and the blade plows or brakes.
+- Oars spin through a **full rotation** — timing the lift/dunk is the game.
 - Cross the finish line **between the yellow buoys** — miss the gate and you have
   to row back.
 - Both oars in sync row straight; one side at a time steers.
@@ -35,7 +37,7 @@ seagulls are *unforgivable*.
   5-4-3-2-1 countdown.
 - First boat through the gate wins. There's no reset button — victory speaks
   for itself.
-- Mobile-friendly: touch buttons appear automatically on phones/tablets.
+- Mobile-friendly: dual virtual joysticks (x = sweep, y = lift) appear automatically on phones/tablets.
 
 Runs entirely peer-to-peer (WebRTC via PeerJS) — no game server needed.
 

@@ -39,9 +39,13 @@
   .hidden{opacity:0;pointer-events:none;}
   #overlay button:disabled{opacity:.45;cursor:default;}
   #touch{position:fixed;inset:0;pointer-events:none;display:none;z-index:5;}
-  #touch button{position:fixed;bottom:24px;width:88px;height:88px;border-radius:50%;border:2px solid rgba(255,255,255,.5);background:rgba(255,255,255,.14);color:#fff;font-size:26px;font-weight:800;font-family:monospace;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;touch-action:manipulation;}
-  #touch button:active{background:rgba(255,255,255,.35);}
-  #bQ{left:16px;} #bW{left:112px;} #bO{right:112px;} #bP{right:16px;}
+  .js{position:fixed;bottom:34px;width:130px;height:130px;border-radius:50%;border:2px dashed rgba(255,255,255,.45);background:rgba(255,255,255,.07);pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;}
+  #jsL{left:20px;} #jsR{right:20px;}
+  .js .knob{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.55);box-shadow:0 2px 8px rgba(0,0,0,.4);transition:transform .06s;}
+  .js .sl{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,.5);font-size:11px;pointer-events:none;text-align:center;line-height:1.5;}
+  .js .knob{background:rgba(255,255,255,.28);}
+  #touch button{position:fixed;bottom:34px;right:20px;width:46px;height:46px;border-radius:12px;border:2px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;font-size:18px;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;}
+  #bM{right:20px;bottom:180px;}
   #bM{position:fixed;top:16px;right:16px;width:52px;height:52px;border-radius:12px;border:2px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;font-size:20px;pointer-events:auto;touch-action:none;display:none;z-index:6;}
   @media (pointer: coarse){
     #touch{display:block;}
@@ -63,23 +67,24 @@
 <div id="msg" class="hud"></div>
 
 <div id="keys" class="hud">
-  <span class="lbl">LEFT OAR</span> <b>Q</b> ↻ <b>W</b> ↺
+  <span class="lbl">LEFT OAR</span> <b>Q</b>/<b>W</b> sweep <b>E</b>/<b>R</b> lift
   &nbsp;&nbsp;|&nbsp;&nbsp;
-  <span class="lbl">RIGHT OAR</span> <b>O</b> ↻ <b>P</b> ↺
+  <span class="lbl">RIGHT OAR</span> <b>U</b>/<b>I</b> sweep <b>O</b>/<b>P</b> lift
   &nbsp;&nbsp;|&nbsp;&nbsp; <b>M</b> music
 </div>
 
 <div id="overlay">
   <h1>R O W P</h1>
-  <h2>steer between the yellow buoys to finish. seagulls bite.</h2>
-  <div class="k">
-    <b>Q</b>/<b>W</b> spin left oar &nbsp;&nbsp; <b>O</b>/<b>P</b> spin right oar &nbsp;&nbsp; <b>R</b> restart
+  <h2>steer between the yellow buoys to finish. seagulls bite.</h2>  <div class="k">
+    <b>Q</b><b>W</b><b>E</b><b>R</b> left oar &nbsp; <b>U</b><b>I</b><b>O</b><b>P</b> right oar
   </div>
   <p>
-    Sweep each oar in a full circle: dip the blade, pull it through the
-    water, lift it over the boat on the recovery. Both oars in sync go
-    straight — one side steers. Cross the finish line BETWEEN the yellow
-    buoys.
+    Each oar has its rotation AND lift under your control. One stroke, the
+    full circle: <b>R</b> dunk the blade, <b>Q</b> sweep it aft through the
+    water, <b>E</b> lift it out, <b>W</b> swing it forward, repeat. Right
+    oar: dunk <b>P</b>, pull <b>U</b>, lift <b>O</b>, forward <b>I</b>.
+    Feathers only exist where you put them — blade in the water going the
+    wrong way is a brake. Mines, seagulls and waves do the rest.
   </p>
   <div id="modeRow">
     <button id="btnSolo">SINGLE PLAYER</button>
@@ -99,8 +104,8 @@
 </div>
 
 <div id="touch">
-  <button id="bQ">Q</button><button id="bW">W</button>
-  <button id="bO">O</button><button id="bP">P</button>
+  <div id="jsL" class="js"><div class="knob"></div><span class="sl">L OAR<br><small>sweep ↔ · lift ↕</small></span></div>
+  <div id="jsR" class="js"><div class="knob"></div><span class="sl">R OAR<br><small>sweep × · lift ↕</small></span></div>
   <button id="bM">♪</button>
 </div>
 
@@ -173,6 +178,7 @@ const waterMat = new THREE.ShaderMaterial({
   uniforms: waterUniforms,
   vertexShader: `
     uniform float uTime;
+    uniform float uAmp;
     varying vec3 vWorldPos;
     varying vec3 vNormal;
     float waveH(vec2 p) {
@@ -337,12 +343,10 @@ function buildRig(shirtColor) {
   return { boat, oarL, oarR, rower, torso, head, armL, armR, legL, legR };
 }
 
-function applyRigPose(rig, aL, aR) {
-  for (const [oar, a, side] of [[rig.oarL, aL, -1], [rig.oarR, aR, 1]]) {
-    const tip = tipLocal(a, side);
-    const yN = Math.max(-0.95, Math.min(0.95, tip.y / OAR_R));
+function applyRigPose(rig, aL, lL, aR, lR) {
+  for (const [oar, a, l, side] of [[rig.oarL, aL, lL, -1], [rig.oarR, aR, lR, 1]]) {
     oar.rotation.order = 'YXZ';
-    oar.rotation.x = Math.asin(yN);
+    oar.rotation.x = Math.max(-1.2, Math.min(1.4, l));
     oar.rotation.y = Math.atan2(-side * Math.cos(a), Math.sin(a));
   }
   const fore = -(Math.sin(aL) + Math.sin(aR)) / 2;
@@ -863,8 +867,8 @@ const S = {
   yaw: 0, yawVel: 0,
   roll: 0, rollVel: 0,
   pitch: 0,
-  aL: -0.9, aLv: 0,
-  aR: -0.9, aRv: 0,
+  aL: -0.9, aLv: 0, lL: -0.3, lLv: 0,
+  aR: -0.9, aRv: 0, lR: -0.3, lRv: 0,
   t: 0,
   finished: false, finishedTime: 0, capsized: false,
   missedGate: false,
@@ -872,12 +876,12 @@ const S = {
 };
 
 const OAR_RATE = 4.2;
+const OAR_LIFT_RATE = 4.6;
+const LIFT_MIN = -0.5, LIFT_MAX = 1.3;
 const OAR_ACCEL_FREE = 9;
 const OAR_ACCEL_LOAD = 3;
 const OAR_DECEL_FREE = 6;
 const OAR_DECEL_LOAD = 1.2;
-const DIP = 1.1;
-const LIFT = 1.2;
 const DRAG_K = 34;
 const FORCE_CAP = 450;
 const LATERAL_DRAG = 3.5;
@@ -900,7 +904,7 @@ addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
   if (e.code === 'KeyM') { A.toggleMusic(); return; }
   keys[e.code] = true;
-  if (['KeyQ', 'KeyW', 'KeyO', 'KeyP'].includes(e.code)) e.preventDefault();
+  if (['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyU', 'KeyI', 'KeyO', 'KeyP'].includes(e.code)) e.preventDefault();
 });
 addEventListener('keyup', e => keys[e.code] = false);
 
@@ -926,7 +930,7 @@ function resetState() {
   Object.assign(S, {
     x: S.laneX || 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0,
     yaw: 0, yawVel: 0, roll: 0, rollVel: 0, pitch: 0, pitchVel: 0,
-    aL: -0.9, aLv: 0, aR: -0.9, aRv: 0,
+    aL: -0.9, aLv: 0, lL: -0.3, lLv: 0, aR: -0.9, aRv: 0, lR: -0.3, lRv: 0,
     finished: false, finishedTime: 0, capsized: false, missedGate: false, strokes: 0,
   });
   tipsInit = false;
@@ -988,15 +992,15 @@ function resetToLobby() {
 /* ============================================================
    OAR KINEMATICS
    ============================================================ */
-function tipLocal(theta, side) {
-  const u = Math.cos(theta);
-  const dip = u > 0 ? -DIP * u * u : 0;
-  const lift = u < 0 ? LIFT * u * u : 0;
+/* Oar axes: theta = horizontal sweep (0 abeam, + aft), lift = blade height
+   above/below the oarlock (locked ±). tipLocal now takes both. */
+function tipLocal(theta, lift, side) {
+  const dip = OAR_R * Math.sin(lift);
   return {
     x: side * OAR_R * Math.cos(theta),
-    y: dip + lift,
+    y: dip,
     z: -OAR_R * Math.sin(theta),
-    u,
+    u: Math.cos(theta),
   };
 }
 
@@ -1005,8 +1009,8 @@ function localToWorld(lx, ly, lz) {
   return [S.x + lx * c + lz * s, S.y + ly, S.z - lx * s + lz * c];
 }
 
-function tipWorld(theta, side) {
-  const t = tipLocal(theta, side);
+function tipWorld(theta, lift, side) {
+  const t = tipLocal(theta, lift, side);
   return localToWorld(t.x, 0.32 + t.y, OARLOCK_Z + t.z);
 }
 
@@ -1014,19 +1018,30 @@ let tipsInit = false;
 let prevTipL = [0, 0, 0], prevTipR = [0, 0, 0];
 let prevSubL = 0, prevSubR = 0;
 
-function oarStep(a, aV, dirKey, revKey, loaded, dt) {
-  let target = 0, accel = OAR_DECEL_FREE;
-  if (dirKey) { target = OAR_RATE; accel = loaded ? OAR_ACCEL_LOAD : OAR_ACCEL_FREE; }
-  else if (revKey) { target = -OAR_RATE; accel = loaded ? OAR_ACCEL_LOAD : OAR_ACCEL_FREE; }
-  else accel = loaded ? OAR_DECEL_LOAD : OAR_DECEL_FREE;
+function oarAxisStep(aV, dir, loaded, dt) {
+  const target = dir * OAR_RATE;
+  const accel = Math.abs(dir) > 0.01
+    ? (loaded ? OAR_ACCEL_LOAD : OAR_ACCEL_FREE)
+    : (loaded ? OAR_DECEL_LOAD : OAR_DECEL_FREE);
   aV += (target - aV) * Math.min(1, accel * dt);
-  return [a + aV * dt, aV];
+  return aV;
+}
+
+function oarLiftStep(lV, dir, loaded, dt) {
+  const target = dir * OAR_LIFT_RATE;
+  const accel = Math.abs(dir) > 0.01
+    ? (loaded ? 4 : OAR_ACCEL_FREE)
+    : (loaded ? 1.5 : OAR_DECEL_FREE);
+  lV += (target - lV) * Math.min(1, accel * dt);
+  return lV;
 }
 
 /* ============================================================
    SIMULATION
    ============================================================ */
-const EMPTY = { KeyQ: false, KeyW: false, KeyO: false, KeyP: false };
+const EMPTY = { KeyQ: false, KeyW: false, KeyE: false, KeyR: false, KeyU: false, KeyI: false, KeyO: false, KeyP: false };
+let touchAxisL = { x: 0, y: 0 }, touchAxisR = { x: 0, y: 0 };
+const clamp1 = v => Math.max(-1, Math.min(1, v));
 
 function step(dt) {
   S.t += dt;
@@ -1035,10 +1050,10 @@ function step(dt) {
   const fx = sY, fz = cY;
   const rx = cY, rz = -sY;
 
-  const [tlx, tly, tlz] = tipWorld(S.aL, -1);
-  const [trx, try_, trz] = tipWorld(S.aR, 1);
-  const tL = tipLocal(S.aL, -1);
-  const tR = tipLocal(S.aR, 1);
+  const [tlx, tly, tlz] = tipWorld(S.aL, S.lL, -1);
+  const [trx, try_, trz] = tipWorld(S.aR, S.lR, 1);
+  const tL = tipLocal(S.aL, S.lL, -1);
+  const tR = tipLocal(S.aR, S.lR, 1);
 
   if (!tipsInit) {
     prevTipL = [tlx, tly, tlz];
@@ -1066,16 +1081,24 @@ function step(dt) {
     prevSubL = subL; prevSubR = subR;
   }
   const kk = raceActive ? keys : EMPTY;
-  const [naL, nvL] = oarStep(S.aL, S.aLv, kk['KeyQ'], kk['KeyW'], loadL, dt);
-  const [naR, nvR] = oarStep(S.aR, S.aRv, kk['KeyO'], kk['KeyP'], loadR, dt);
+  const kL = clamp1((kk.KeyQ ? 1 : 0) - (kk.KeyW ? 1 : 0) + touchAxisL.x);
+  const kR = clamp1((kk.KeyU ? 1 : 0) - (kk.KeyI ? 1 : 0) + touchAxisR.x);
+  const hL = clamp1((kk.KeyE ? 1 : 0) - (kk.KeyR ? 1 : 0) + touchAxisL.y);
+  const hR = clamp1((kk.KeyO ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.y);
+  S.aLv = oarAxisStep(S.aLv, kL, loadL, dt);
+  S.aRv = oarAxisStep(S.aRv, kR, loadR, dt);
+  S.aL += S.aLv * dt;
+  S.aR += S.aRv * dt;
+  S.lLv = oarLiftStep(S.lLv, hL, subL > 0.3, dt);
+  S.lRv = oarLiftStep(S.lRv, hR, subR > 0.3, dt);
+  S.lL = Math.max(LIFT_MIN, Math.min(LIFT_MAX, S.lL + S.lLv * dt));
+  S.lR = Math.max(LIFT_MIN, Math.min(LIFT_MAX, S.lR + S.lRv * dt));
 
-  const wl_ = ((S.aL % TAU) + TAU) % TAU, nl_ = ((naL % TAU) + TAU) % TAU;
-  const wr_ = ((S.aR % TAU) + TAU) % TAU, nr_ = ((naR % TAU) + TAU) % TAU;
-  if (nvL > 0 && nl_ < wl_) S.strokes++;
-  if (nvR > 0 && nr_ < wr_) S.strokes++;
-
-  S.aL = naL; S.aLv = nvL;
-  S.aR = naR; S.aRv = nvR;
+  const wl_ = ((S.aL % TAU) + TAU) % TAU;
+  const wr_ = ((S.aR % TAU) + TAU) % TAU;
+  if (S.aLv > 0 && wl_ < (S.prevL || 0)) S.strokes++;
+  if (S.aRv > 0 && wr_ < (S.prevR || -0.9)) S.strokes++;
+  S.prevL = wl_; S.prevR = wr_;
 
   let Fx = 0, Fy = 0, Fz = 0, tauYaw = 0, tauRoll = 0, tauPitch = 0;
 
@@ -1181,7 +1204,7 @@ function step(dt) {
   rigL.boat.rotation.y = S.yaw;
   rigL.boat.rotation.x = S.pitch;
   rigL.boat.rotation.z = S.roll;
-  applyRigPose(rigL, S.aL, S.aR);
+  applyRigPose(rigL, S.aL, S.lL, S.aR, S.lR);
 }
 
 /* ============================================================
@@ -1223,8 +1246,8 @@ function getRemote(gid) {
   if (!r) {
     r = {
       gid, rig: null, active: false,
-      cur: { x: 0, y: 0, z: -80, yaw: 0, roll: 0, pitch: 0, aL: -0.9, aR: -0.9, strokes: 0 },
-      tgt: { x: 0, y: 0, z: -80, yaw: 0, roll: 0, pitch: 0, aL: -0.9, aR: -0.9, strokes: 0 },
+      cur: { x: 0, y: 0, z: -80, yaw: 0, roll: 0, pitch: 0, aL: -0.9, lL: -0.3, aR: -0.9, lR: -0.3, strokes: 0 },
+      tgt: { x: 0, y: 0, z: -80, yaw: 0, roll: 0, pitch: 0, aL: -0.9, lL: -0.3, aR: -0.9, lR: -0.3, strokes: 0 },
       vx: 0, vz: 0,
     };
     remotes.set(gid, r);
@@ -1296,7 +1319,7 @@ function onData(d, c) {
       break;
     case 's':
       if (net.mode === 'host' && c && c._gid != null) {
-        net.lastS.set(c._gid, { x: d.x, y: d.y, z: d.z, yaw: d.yw, roll: d.ro, pitch: d.pi, aL: d.aL, aR: d.aR, st: d.st || 0 });
+        net.lastS.set(c._gid, { x: d.x, y: d.y, z: d.z, yaw: d.yw, roll: d.ro, pitch: d.pi, aL: d.aL, lL: d.lL, aR: d.aR, lR: d.lR, st: d.st || 0 });
       }
       break;
     case 'id':
@@ -1460,7 +1483,7 @@ let sendT = 0;
 function selfState() {
   return { x: +S.x.toFixed(3), y: +S.y.toFixed(3), z: +S.z.toFixed(3),
     yw: +S.yaw.toFixed(3), ro: +S.roll.toFixed(3), pi: +S.pitch.toFixed(3),
-    aL: +S.aL.toFixed(3), aR: +S.aR.toFixed(3), st: S.strokes };
+    aL: +S.aL.toFixed(3), lL: +S.lL.toFixed(3), aR: +S.aR.toFixed(3), lR: +S.lR.toFixed(3), st: S.strokes };
 }
 function netFrame(dt) {
   if (net.mode === 'guest') {
@@ -1479,7 +1502,7 @@ function netFrame(dt) {
     sendT = 0.075;
     const list = [{ id: 0, ...selfState() }];
     for (const [gid, st] of net.lastS) {
-      list.push({ id: gid, x: st.x, y: st.y, z: st.z, yw: st.yaw, ro: st.roll, pi: st.pitch, aL: st.aL, aR: st.aR, st: st.st });
+      list.push({ id: gid, x: st.x, y: st.y, z: st.z, yw: st.yaw, ro: st.roll, pi: st.pitch, aL: st.aL, lL: st.lL, aR: st.aR, lR: st.lR, st: st.st });
     }
     net.broadcast({ t: 'r', d: list });
     applyRemoteStates(list.filter(e => e.id !== net.myId && e.id !== 0));
@@ -1492,7 +1515,7 @@ function applyRemoteStates(list) {
     if (st.id === net.myId) continue;
     const r = getRemote(st.id);
     ensureRemoteRig(r);
-    r.tgt = { x: st.x, y: st.y, z: st.z, yaw: st.yw, roll: st.ro, pitch: st.pi, aL: st.aL, aR: st.aR, strokes: st.st || 0 };
+    r.tgt = { x: st.x, y: st.y, z: st.z, yaw: st.yw, roll: st.ro, pitch: st.pi, aL: st.aL, lL: st.lL, aR: st.aR, lR: st.lR, strokes: st.st || 0 };
     if (!r.active) {
       for (const k in r.cur) r.cur[k] = r.tgt[k];
       r.active = true;
@@ -1578,7 +1601,7 @@ function updateRemoteBoats(dt) {
     r.rig.boat.rotation.y = c.yaw;
     r.rig.boat.rotation.x = c.pitch;
     r.rig.boat.rotation.z = c.roll;
-    applyRigPose(r.rig, c.aL, c.aR);
+    applyRigPose(r.rig, c.aL, c.lL, c.aR, c.lR);
   }
 }
 
@@ -1641,7 +1664,7 @@ function collide(dt) {
       }
     }
     let bladeHitLocal = 0;
-    for (const tip of [tipWorld(S.aL, -1), tipWorld(S.aR, 1)]) {
+    for (const tip of [tipWorld(S.aL, S.lL, -1), tipWorld(S.aR, S.lR, 1)]) {
       const [tipX, tipY, tipZ] = tip;
       if (tipY > 0.45) continue;
       for (const b of remotePts) {
@@ -1767,17 +1790,33 @@ function loop(now) {
 
 /* mobile touch controls */
 function initTouch() {
-  const map = { bQ: 'KeyQ', bW: 'KeyW', bO: 'KeyO', bP: 'KeyP' };
-  for (const [id, code] of Object.entries(map)) {
-    const b = document.getElementById(id);
-    const down = e => { e.preventDefault(); keys[code] = true; };
-    const up = e => { e.preventDefault(); keys[code] = false; };
-    b.addEventListener('pointerdown', down);
-    b.addEventListener('pointerup', up);
-    b.addEventListener('pointercancel', up);
-    b.addEventListener('pointerleave', up);
-    b.addEventListener('contextmenu', e => e.preventDefault());
+  function makeStick(el, axis) {
+    let pid = null;
+    const knob = el.querySelector('.knob');
+    const R = 40;
+    const move = e => {
+      const r = el.getBoundingClientRect();
+      let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+      const d = Math.hypot(dx, dy);
+      if (d > R) { dx *= R / d; dy *= R / d; }
+      knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      knob.style.background = d > 4 ? 'rgba(255,255,255,.5)' : 'rgba(255,255,255,.28)';
+      axis.x = clamp1(dx / R);
+      axis.y = clamp1(-dy / R);
+    };
+    const end = e => {
+      if (pid !== null && e.pointerId !== pid) return;
+      pid = null;
+      axis.x = 0; axis.y = 0;
+      knob.style.transform = '';
+    };
+    el.addEventListener('pointerdown', e => { e.preventDefault(); A.ensure(); pid = e.pointerId; el.setPointerCapture(e.pointerId); move(e); });
+    el.addEventListener('pointermove', e => { if (pid === e.pointerId) move(e); });
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
   }
+  makeStick(document.getElementById('jsL'), touchAxisL);
+  makeStick(document.getElementById('jsR'), touchAxisR);
   document.getElementById('bM').addEventListener('pointerdown', e => { e.preventDefault(); A.toggleMusic(); });
 }
 
@@ -1790,8 +1829,21 @@ if (location.search.indexOf('demo') >= 0) {
   ov.style.display = 'none';
   $('msg').style.opacity = 0;
   beginRace(123456);
-  keys.KeyQ = true; keys.KeyO = true;
-  for (let i = 0; i < 390; i++) step(1 / 60);
+  const kk = keys;
+  for (let i = 0; i < 390; i++) {
+    const norm = a => { a = ((a % TAU) + TAU) % TAU; return a > Math.PI ? a - TAU : a; };
+    const raL = norm(S.aL), raR = norm(S.aR);
+    kk.KeyW = S.lL > 0.45 && raL > -0.35;       // forward swing while blade is raised
+    kk.KeyR = raL < -0.3 && S.lL > 0.2;         // dunk when parked forward
+    kk.KeyQ = S.lL < 0.1 && raL < 0.95;         // pull once blade is deep, until it's aft
+    kk.KeyE = raL > 0.95;                       // lift at the end of the stroke
+    kk.KeyP = (raR < -0.3 && S.lR > 0.2);
+    kk.KeyU = (S.lR < 0.1 && raR < 0.95);
+    kk.KeyO = raR > 0.95;
+    kk.KeyI = (S.lR > 0.45 && raR > -0.35);
+    step(1 / 60);
+  }
+  kk.KeyQ = true; kk.KeyU = true;
   updateGulls(1 / 60);
 }
 addEventListener('resize', () => {
