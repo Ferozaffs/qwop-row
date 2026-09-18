@@ -123,16 +123,18 @@ const WAVES = [
   [ 0.9,  0.9,  0.04,  3.8, 2.60],
 ];
 
+let weatherMul = 1;
+let weatherName = 'calm';
 function waveHeight(x, z, t) {
   let h = 0;
   for (const [dx, dz, amp, len, spd] of WAVES) {
-    h += amp * Math.sin((x * dx / len + z * dz / len) * Math.PI * 2 + t * spd);
+    h += amp * weatherMul * Math.sin((x * dx / len + z * dz / len) * Math.PI * 2 + t * spd);
   }
   return h;
 }
 
 const glslWaves = WAVES.map(([dx, dz, amp, len, spd]) =>
-  `h += ${amp.toFixed(4)} * sin((p.x * ${(dx / len).toFixed(6)} + p.y * ${(dz / len).toFixed(6)}) * 6.2831853 + uTime * ${spd.toFixed(4)});`
+  `h += (${amp.toFixed(4)} * uAmp) * sin((p.x * ${(dx / len).toFixed(6)} + p.y * ${(dz / len).toFixed(6)}) * 6.2831853 + uTime * ${spd.toFixed(4)});`
 ).join('\n');
 
 /* ============================================================
@@ -165,7 +167,7 @@ scene.add(new THREE.HemisphereLight(0xbfd9ee, 0x1c4d66, 0.9));
 /* ---------------- Water ---------------- */
 const WATER_SIZE = 500;
 const WATER_SEG = isMobile ? 120 : 200;
-const waterUniforms = { uTime: { value: 0 }, uSunDir: { value: sun.position.clone().normalize() } };
+const waterUniforms = { uTime: { value: 0 }, uAmp: { value: 1 }, uSunDir: { value: sun.position.clone().normalize() } };
 
 const waterMat = new THREE.ShaderMaterial({
   uniforms: waterUniforms,
@@ -773,8 +775,8 @@ function spawnMines(seedRng) {
     const led = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), mineLed);
     led.position.y = 0.28;
     grp.add(led);
-    const mx = (seedRng() * 2 - 1) * 5.2;
-    const mz = 12 + seedRng() * 82;
+    const mx = (seedRng() * 2 - 1) * 9.5;
+    const mz = 10 + (i * 85) / MINE_COUNT + seedRng() * 3.5;
     grp.position.set(mx, waveHeight(mx, mz, S.t) - 0.1, mz);
     mines.add(grp);
     mineDef.push({ x: mx, z: mz, exploded: false, lastTick: -10 });
@@ -940,6 +942,10 @@ function beginRace(seed, lane) {
   raceRng = mulberry32(raceSeed);
   S.laneX = lane || 0;
   resetState();
+  const wr = raceRng();
+  if (wr < 0.35) { weatherMul = 0.55 + wr * 0.5; weatherName = 'calm seas'; }
+  else if (wr < 0.75) { weatherMul = 0.95 + wr * 0.5; weatherName = 'choppy waters'; }
+  else { weatherMul = 1.35 + wr * 0.7; weatherName = 'STORM'; }
   spawnMines(raceRng);
   for (const g of gulls) {
     const ud = g.userData;
@@ -1348,6 +1354,7 @@ function onData(d, c) {
       endTimer = -1;
       resetState();
       if (net.mode === 'guest') showLobbyGuest();
+      else if (net.mode === 'host') resetToLobby();
       break;
     case 'out':
       remotes.delete(d.id);
@@ -1690,8 +1697,9 @@ function loop(now) {
       endTimer = -1;
       if (net.mode === 'host') {
         resetToLobby();
-        net.send({ t: 'reset' });
+        net.broadcast({ t: 'reset' });
       } else if (net.mode === 'guest') {
+        resetToLobby();
         net.send({ t: 'reset' });
       } else {
         resetToLobby();
@@ -1702,6 +1710,7 @@ function loop(now) {
   water.position.x = S.x;
   water.position.z = S.z;
   waterUniforms.uTime.value = started ? S.t : now / 1000;
+  waterUniforms.uAmp.value = weatherMul;
 
   updateGulls(dt);
   if (splashT < 0.7) {
@@ -1734,7 +1743,7 @@ function loop(now) {
 
   $('dist').innerHTML = `${Math.max(0, S.z).toFixed(1)}<small> / ${GOAL} m</small>`;
   $('time').textContent = `${S.t.toFixed(2)} s`;
-  $('stroke').textContent = `${S.strokes} strokes · heading ${(S.yaw * 180 / Math.PI).toFixed(0)}°`;
+  $('stroke').textContent = `${S.strokes} strokes · heading ${(S.yaw * 180 / Math.PI).toFixed(0)}° · ${weatherName}`;
   $('pb').textContent = pb ? `PB: ${pb.toFixed(2)}s` : '';
   if (net.mode === 'guest' || net.mode === 'host') {
     const lines = [];
