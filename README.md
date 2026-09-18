@@ -13,11 +13,15 @@ seagulls are *unforgivable*.
 
 | Key | Action |
 |-----|--------|
-| `Q` / `W` | Left oar sweep aft / forward |
-| `E` / `R` | Left oar lift / dunk |
-| `U` / `I` | Right oar sweep aft / forward |
-| `O` / `P` | Right oar lift / dunk |
+| `Q` / `E` | Left oar sweep aft / forward |
+| `W` / `R` | Left oar lift / dunk |
+| `U` / `O` | Right oar sweep aft / forward |
+| `I` / `P` | Right oar lift / dunk |
 | `M` | Toggle music |
+
+Two control styles on the menu — **SPIN** (2 keys per oar, full 360° blade rotation, depth is automatic)
+or **SWING ±90° + LIFT** (4 keys per oar, you control the blade height). The host's
+choice applies to everyone who joins.
 
 - Each oar has two axes — **sweep** and **lift** — so a proper circular stroke
   is: *dunk* the blade, *pull* it through the water, *lift* it out, *swing*
