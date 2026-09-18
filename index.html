@@ -167,12 +167,13 @@ sun.shadow.camera.left = -25; sun.shadow.camera.right = 25;
 sun.shadow.camera.top = 25; sun.shadow.camera.bottom = -25;
 sun.shadow.camera.far = 200;
 scene.add(sun);
-scene.add(new THREE.HemisphereLight(0xbfd9ee, 0x1c4d66, 0.9));
+scene.hemi = new THREE.HemisphereLight(0xbfd9ee, 0x1c4d66, 0.9);
+scene.add(scene.hemi);
 
 /* ---------------- Water ---------------- */
 const WATER_SIZE = 500;
 const WATER_SEG = isMobile ? 120 : 200;
-const waterUniforms = { uTime: { value: 0 }, uAmp: { value: 1 }, uSunDir: { value: sun.position.clone().normalize() } };
+const waterUniforms = { uTime: { value: 0 }, uAmp: { value: 1 }, uStorm: { value: 0 }, uSunDir: { value: sun.position.clone().normalize() } };
 
 const waterMat = new THREE.ShaderMaterial({
   uniforms: waterUniforms,
@@ -199,6 +200,7 @@ const waterMat = new THREE.ShaderMaterial({
   `,
   fragmentShader: `
     uniform vec3 uSunDir;
+    uniform float uStorm;
     varying vec3 vWorldPos;
     varying vec3 vNormal;
     void main() {
@@ -212,6 +214,7 @@ const waterMat = new THREE.ShaderMaterial({
       float spec = pow(max(dot(N, H), 0.0), 220.0) * 2.2;
       col += vec3(1.0, 0.95, 0.85) * spec;
       col = mix(col, vec3(0.55, 0.72, 0.85), fres * 0.5);
+      col = mix(col, vec3(0.14, 0.18, 0.21), uStorm * 0.6);
       gl_FragColor = vec4(col, 0.94);
     }
   `,
@@ -744,7 +747,7 @@ document.addEventListener('keydown', () => A.ensure(), { once: true });
 /* ============================================================
    SEA MINES — deterministic per race seed, proximity blast
    ============================================================ */
-const MINE_COUNT = 14;
+const MINE_COUNT = 22;
 const mineMat = new THREE.MeshStandardMaterial({ color: 0x16202a, roughness: 0.45, metalness: 0.4 });
 const mineLed = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff2200, emissiveIntensity: 2 });
 
@@ -779,8 +782,8 @@ function spawnMines(seedRng) {
     const led = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), mineLed);
     led.position.y = 0.28;
     grp.add(led);
-    const mx = (seedRng() * 2 - 1) * 9.5;
-    const mz = 10 + (i * 85) / MINE_COUNT + seedRng() * 3.5;
+    const mx = (seedRng() * 2 - 1) * 10.5;
+    const mz = 10 + (i * 86) / MINE_COUNT + seedRng() * 3.2;
     grp.position.set(mx, waveHeight(mx, mz, S.t) - 0.1, mz);
     mines.add(grp);
     mineDef.push({ x: mx, z: mz, exploded: false, lastTick: -10 });
@@ -878,6 +881,7 @@ const S = {
 const OAR_RATE = 4.2;
 const OAR_LIFT_RATE = 4.6;
 const LIFT_MIN = -0.5, LIFT_MAX = 1.3;
+const SWEEP_MIN = -1.55, SWEEP_MAX = 1.9;
 const OAR_ACCEL_FREE = 9;
 const OAR_ACCEL_LOAD = 3;
 const OAR_DECEL_FREE = 6;
@@ -947,9 +951,9 @@ function beginRace(seed, lane) {
   S.laneX = lane || 0;
   resetState();
   const wr = raceRng();
-  if (wr < 0.35) { weatherMul = 0.55 + wr * 0.5; weatherName = 'calm seas'; }
-  else if (wr < 0.75) { weatherMul = 0.95 + wr * 0.5; weatherName = 'choppy waters'; }
-  else { weatherMul = 1.35 + wr * 0.7; weatherName = 'STORM'; }
+  if (wr < 0.35) { weatherMul = 0.55 + wr * 0.4; weatherName = 'calm seas'; }
+  else if (wr < 0.75) { weatherMul = 1.0 + wr * 0.5; weatherName = 'choppy waters'; }
+  else { weatherMul = 2.2 + (wr - 0.75) * 11.2; weatherName = 'STORM'; }
   spawnMines(raceRng);
   for (const g of gulls) {
     const ud = g.userData;
@@ -1087,8 +1091,10 @@ function step(dt) {
   const hR = clamp1((kk.KeyO ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.y);
   S.aLv = oarAxisStep(S.aLv, kL, loadL, dt);
   S.aRv = oarAxisStep(S.aRv, kR, loadR, dt);
-  S.aL += S.aLv * dt;
-  S.aR += S.aRv * dt;
+  S.aL = Math.max(SWEEP_MIN, Math.min(SWEEP_MAX, S.aL + S.aLv * dt));
+  S.aR = Math.max(SWEEP_MIN, Math.min(SWEEP_MAX, S.aR + S.aRv * dt));
+  if ((S.aL <= SWEEP_MIN || S.aL >= SWEEP_MAX) && Math.sign(S.aLv) === Math.sign(S.aL)) S.aLv = 0;
+  if ((S.aR <= SWEEP_MIN || S.aR >= SWEEP_MAX) && Math.sign(S.aRv) === Math.sign(S.aR)) S.aRv = 0;
   S.lLv = oarLiftStep(S.lLv, hL, subL > 0.3, dt);
   S.lRv = oarLiftStep(S.lRv, hR, subR > 0.3, dt);
   S.lL = Math.max(LIFT_MIN, Math.min(LIFT_MAX, S.lL + S.lLv * dt));
@@ -1734,6 +1740,15 @@ function loop(now) {
   water.position.z = S.z;
   waterUniforms.uTime.value = started ? S.t : now / 1000;
   waterUniforms.uAmp.value = weatherMul;
+  const wT = Math.max(0, Math.min(1, (weatherMul - 0.55) / 4.45));
+  scene.background.set(0x87b8d8).lerp(new THREE.Color(0x40525c), wT);
+  scene.fog.color.copy(scene.background);
+  scene.fog.near = 60 - 38 * wT;
+  scene.fog.far = 260 - 150 * wT;
+  sun.intensity = 2.2 - 1.3 * wT;
+  sun.position.set(40, 55, -30);
+  scene.hemi && (scene.hemi.intensity = 0.9 - 0.55 * wT);
+  waterUniforms.uStorm.value = wT;
 
   updateGulls(dt);
   if (splashT < 0.7) {
