@@ -738,7 +738,7 @@ document.addEventListener('keydown', () => A.ensure(), { once: true });
 /* ============================================================
    SEA MINES — deterministic per race seed, proximity blast
    ============================================================ */
-const MINE_COUNT = 6;
+const MINE_COUNT = 14;
 const mineMat = new THREE.MeshStandardMaterial({ color: 0x16202a, roughness: 0.45, metalness: 0.4 });
 const mineLed = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff2200, emissiveIntensity: 2 });
 
@@ -821,14 +821,13 @@ function mineKnockSelf(m) {
   const dx = S.x - m.x, dz = S.z - m.z;
   const d = Math.hypot(dx, dz) || 0.001;
   const nx = dx / d, nz = dz / d;
-  S.vx += nx * 3.4;
-  S.vz += nz * 3.4;
-  S.vy -= 1.5;
+  S.vx += nx * 5.5;
+  S.vz += nz * 5.5;
+  S.vy -= 1.8;
   const sgn = Math.random() < 0.5 ? -1 : 1;
-  S.rollVel += sgn * (0.9 + Math.random() * 0.5);
-  S.yawVel += (Math.random() - 0.5) * 0.8;
+  S.rollVel += sgn * (1.1 + Math.random() * 0.6);
+  S.yawVel += (Math.random() - 0.5) * 1.0;
   gullSplash(S.x, S.z);
-  showMsg('MINE!', '#ff5050');
   if (net.connected()) {
     const msg = { t: 'boomB', id: i_m(m), x: m.x, z: m.z };
     if (net.mode === 'host') net.broadcast(msg);
@@ -845,12 +844,11 @@ function boomRemote(d) {
   const d2 = Math.hypot(dx, dz);
   if (d2 < 3.4) {
     if (d2 > 0.001) {
-      S.vx += (dx / d2) * 3.0 * (1 - d2 / 3.6);
-      S.vz += (dz / d2) * 3.0 * (1 - d2 / 3.6);
+      S.vx += (dx / d2) * 5.0 * (1 - d2 / 3.6);
+      S.vz += (dz / d2) * 5.0 * (1 - d2 / 3.6);
     }
-    S.vy -= 1.3;
-    S.rollVel += (Math.random() < 0.5 ? -1 : 1) * (0.8 + Math.random() * 0.4);
-    showMsg('A MINE BLEW NEARBY!', '#ff5050');
+    S.vy -= 1.6;
+    S.rollVel += (Math.random() < 0.5 ? -1 : 1) * (1.0 + Math.random() * 0.5);
   }
 }
 
