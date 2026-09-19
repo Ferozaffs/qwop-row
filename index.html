@@ -985,17 +985,17 @@ function setControlStyle(style) {
   $('btnStyleSweep').classList.toggle('active', style === 'sweep');
   $('ctrlHelp').innerHTML = style === 'spin'
     ? '<b>Q</b>/<b>W</b> left oar (fwd/aft spin) &nbsp; <b>O</b>/<b>P</b> right oar spin'
-    : '<b>E</b>/<b>Q</b> left pull / fwd &nbsp; <b>W</b>/<b>R</b> left lift / dunk &nbsp; <b>U</b>/<b>O</b> right pull / fwd &nbsp; <b>I</b>/<b>P</b> right lift / dunk';
+    : '<b>Q</b> dunk &nbsp; <b>W</b> fwd swing &nbsp; <b>E</b> lift &nbsp; <b>R</b> pull &nbsp;|&nbsp; right oar: <b>P</b> dunk <b>U</b> pull <b>I</b> lift <b>O</b> fwd';
   $('ctrlDesc').innerHTML = style === 'spin'
     ? 'Classic rowing: press <b>Q</b>/<b>W</b> to spin the left oar, <b>O</b>/<b>P</b> for the right. The blade dips and lifts itself as it rotates — find the power arc, avoid the backwater. Mines, seagulls and waves do the rest.'
-    : 'Each oar has sweep AND lift: <b>R</b> dunk, <b>E</b> pull aft, <b>W</b> lift, <b>Q</b> swing forward (right oar: <b>P</b>, <b>U</b>, <b>I</b>, <b>O</b>). The sweep is limited to ±90° — row the full rotation by timing lift and dunk. Mines, seagulls and waves do the rest.';
+    : 'One stroke per oar: <b>Q</b> dunk the blade, <b>R</b> pull it aft through the water, <b>E</b> lift it out, <b>W</b> swing it forward — repeat. Right oar: <b>P</b>, <b>U</b>, <b>I</b>, <b>O</b>. Sweep is limited to ±90°; timing the phases is the game. Mines, seagulls and waves do the rest.';
   updateKeysHud();
 }
 
 function updateKeysHud() {
   $('keys').innerHTML = controlStyle === 'spin'
     ? `<span class="lbl">LEFT OAR</span> <b>Q</b>/<b>W</b> spin&nbsp;&nbsp;|&nbsp;&nbsp;<span class="lbl">RIGHT OAR</span> <b>O</b>/<b>P</b> spin&nbsp;&nbsp;|&nbsp;&nbsp;<b>M</b> music`
-    : `<span class="lbl">LEFT OAR</span> <b>Q</b>/<b>E</b> fwd/pull <b>W</b>/<b>R</b> lift/dunk&nbsp;&nbsp;|&nbsp;&nbsp;<span class="lbl">RIGHT OAR</span> <b>U</b>/<b>O</b> fwd/pull <b>I</b>/<b>P</b> lift/dunk&nbsp;&nbsp;|&nbsp;&nbsp;<b>M</b> music`;
+    : `<span class="lbl">LEFT OAR</span> <b>Q</b>dunk <b>R</b>pull <b>E</b>lift <b>W</b>fwd&nbsp;&nbsp;|&nbsp;&nbsp;<span class="lbl">RIGHT OAR</span> <b>P</b>dunk <b>U</b>pull <b>I</b>lift <b>O</b>fwd&nbsp;&nbsp;|&nbsp;&nbsp;<b>M</b> music`;
 }
 
 function initStyleUI() {
@@ -1118,7 +1118,7 @@ function step(dt) {
   const spin = controlStyle === 'spin';
   const kL = spin
     ? clamp1((kk.KeyW ? 1 : 0) - (kk.KeyQ ? 1 : 0) + touchAxisL.x)
-    : clamp1((kk.KeyE ? 1 : 0) - (kk.KeyQ ? 1 : 0) + touchAxisL.x);
+    : clamp1((kk.KeyR ? 1 : 0) - (kk.KeyW ? 1 : 0) + touchAxisL.x);
   const kR = spin
     ? clamp1((kk.KeyO ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.x)
     : clamp1((kk.KeyU ? 1 : 0) - (kk.KeyO ? 1 : 0) + touchAxisR.x);
@@ -1133,7 +1133,7 @@ function step(dt) {
     hL = clamp1((lamL - S.lL) * 4.5);
     hR = clamp1((lamR - S.lR) * 4.5);
   } else {
-    hL = clamp1((kk.KeyW ? 1 : 0) - (kk.KeyR ? 1 : 0) + touchAxisL.y);
+    hL = clamp1((kk.KeyE ? 1 : 0) - (kk.KeyQ ? 1 : 0) + touchAxisL.y);
     hR = clamp1((kk.KeyI ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.y);
   }
   S.aLv = oarAxisStep(S.aLv, kL, loadL, dt);
@@ -1910,17 +1910,17 @@ if (location.search.indexOf('demo') >= 0) {
   for (let i = 0; i < 390; i++) {
     const norm = a => { a = ((a % TAU) + TAU) % TAU; return a > Math.PI ? a - TAU : a; };
     const raL = norm(S.aL), raR = norm(S.aR);
-    kk.KeyQ = S.lL > 0.45 && raL > -0.35;       // forward swing while blade is raised (Q = fwd after flip)
-    kk.KeyR = raL < -0.3 && S.lL > 0.2;         // dunk when parked forward
-    kk.KeyE = S.lL < 0.1 && raL < 0.95;         // pull once blade is deep, until it's aft
-    kk.KeyW = raL > 0.95;                       // lift at the end of the stroke
+    kk.KeyW = S.lL > 0.45 && raL > -0.35;       // forward swing while blade is raised (Q shifted: W = fwd)
+    kk.KeyQ = raL < -0.3 && S.lL > 0.2;         // dunk when parked forward (Q = dunk)
+    kk.KeyR = S.lL < 0.1 && raL < 0.95;         // pull once blade is deep, until it's aft (R = pull)
+    kk.KeyE = raL > 0.95;                       // lift at the end of the stroke (E = lift)
     kk.KeyP = (raR < -0.3 && S.lR > 0.2);
     kk.KeyU = (S.lR < 0.1 && raR < 0.95);
     kk.KeyO = raR > 0.95;
     kk.KeyI = (S.lR > 0.45 && raR > -0.35);
     step(1 / 60);
   }
-  kk.KeyE = true; kk.KeyU = true;
+  kk.KeyR = true; kk.KeyU = true;
   updateGulls(1 / 60);
 }
 addEventListener('resize', () => {
