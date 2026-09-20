@@ -36,7 +36,11 @@ choice applies to everyone who joins.
 ## Multiplayer races
 
 - **HOST RACE** gives you a word code like `tide-otter-37` — share it.
-- Up to 6 players join with **JOIN + code**; boats start side-by-side in lanes.
+- Up to 5 joiners; **SOLO** mode puts everyone in their own boat.
+- **2v2 mode**: with exactly 4 people, teams of two share a boat — one rower
+  takes the left oar, the other the right. The boat's physics run on one of
+  the pair's machines and the partner's key presses stream to it live, so
+  you genuinely have to coordinate strokes.
 - Input stays locked until everyone's in, then the host starts a
   5-4-3-2-1 countdown.
 - First boat through the gate wins. There's no reset button — victory speaks
