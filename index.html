@@ -32,6 +32,9 @@
   #styleRow{display:flex;align-items:center;gap:8px;margin-top:14px;}
   #styleRow button{font-size:15px;padding:8px 18px;margin:0;}
   #styleRow button.active{background:rgba(255,215,107,.35);border-color:#ffd76b;}
+  #modeRow2{display:flex;gap:8px;justify-content:center;margin:8px 0;}
+  #modeRow2 button{font-size:13px;padding:7px 14px;margin:0;}
+  #modeRow2 button.active{background:rgba(255,215,107,.35);border-color:#ffd76b;}
   #modeRow{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
   #joinRow{display:flex;gap:8px;justify-content:center;margin-top:6px;}
   #joinCode{font-size:20px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.3);color:#fff;text-transform:lowercase;width:190px;font-family:monospace;}
@@ -102,9 +105,13 @@
     <div style="font-size:13px;opacity:.6;letter-spacing:2px;">ROOM CODE</div>
     <div id="mpCode">······</div>
     <div id="mpStatus">setting up…</div>
+    <div id="modeRow2">
+      <button id="btnModeSolo" class="active">SOLO BOATS</button>
+      <button id="btnModeDuo">2V2 — 2 PLAYERS PER BOAT</button>
+    </div>
     <button id="btnBegin" disabled>BEGIN RACE</button>
   </div>
-  <p style="margin-top:18px">Multiplayer runs peer-to-peer (PeerJS). The big word code lets a friend find your race — it's shown on your screen.</p>
+  <p style="margin-top:18px">Multiplayer runs peer-to-peer (PeerJS). Host picks the mode: SOLO (one rower per boat) or 2V2 — two rowers share a boat, one per oar; the partners' keys stream to whoever simulates the hull.</p>
 </div>
 
 <div id="touch">
@@ -929,6 +936,14 @@ function showMsg(txt, color) {
 
 let raceActive = false;
 let controlStyle = localStorage.getItem('rowp_style') || 'spin';
+let lobbyMode = 'solo';       // host's race format: 'solo' | 'duo'
+let duoMode = false;          // true while racing 2v2
+let amOwner = true;           // duo: does my machine simulate the shared boat?
+let boatOwnerGid = 0;         // duo: gid of the owner of MY boat
+let partnerGid = -1;          // duo: gid of my same-boat partner
+let raceBoatIds = null;       // duo: owner gids that actually represent boats
+let raceTeams = null;         // duo: [[ownerA, partnerA], [ownerB, partnerB]]
+const pairIn = { a: 0, h: 0 };// duo: partner's right-oar axes received live
 
 function laneX(idx, n) {
   const off = idx - (n - 1) / 2;
@@ -950,7 +965,27 @@ function resetState() {
   $('msg').style.opacity = 0;
 }
 
+function clearDuo() {
+  duoMode = false; amOwner = true; boatOwnerGid = 0; partnerGid = -1;
+  raceBoatIds = null; raceTeams = null;
+  pairIn.a = 0; pairIn.h = 0;
+  rigL.boat.visible = true;
+}
+
+function setDuoRoles(teams) {
+  raceTeams = teams;
+  raceBoatIds = teams.map(t => t[0]);
+  duoMode = true;
+  const mine = teams.find(t => t.includes(net.myId));
+  if (!mine) { clearDuo(); return; }
+  boatOwnerGid = mine[0];
+  amOwner = boatOwnerGid === net.myId;
+  partnerGid = mine[mine[0] === net.myId ? 1 : 0];
+  if (!amOwner) rigL.boat.visible = false;
+}
+
 function beginRace(seed, lane) {
+  clearDuo();
   raceSeed = seed >>> 0;
   raceRng = mulberry32(raceSeed);
   S.laneX = lane || 0;
@@ -1012,6 +1047,7 @@ function resetToLobby() {
   raceActive = false;
   endTimer = -1;
   resetState();
+  clearDuo();
   if (net.mode === 'host' && net.connected()) {
     showLobbyHost(net.code);
     $('btnBegin').disabled = false;
@@ -1119,22 +1155,27 @@ function step(dt) {
   const kL = spin
     ? clamp1((kk.KeyW ? 1 : 0) - (kk.KeyQ ? 1 : 0) + touchAxisL.x)
     : clamp1((kk.KeyR ? 1 : 0) - (kk.KeyW ? 1 : 0) + touchAxisL.x);
-  const kR = spin
-    ? clamp1((kk.KeyO ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.x)
-    : clamp1((kk.KeyU ? 1 : 0) - (kk.KeyO ? 1 : 0) + touchAxisR.x);
-  let hL, hR;
+  const uR_ = Math.cos(S.aR);
+  const lamR = Math.asin(Math.max(-0.98, Math.min(0.98, uR_ > 0 ? -0.52 * uR_ * uR_ : 0.55 * uR_ * uR_)));
+  let kR, hR;
+  if (duoMode && amOwner && partnerGid >= 0) {
+    kR = clamp1(pairIn.a);                              // same-boat partner drives this oar
+    hR = spin ? clamp1((lamR - S.lR) * 4.5) : clamp1(pairIn.h);
+  } else {
+    kR = spin
+      ? clamp1((kk.KeyO ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.x)
+      : clamp1((kk.KeyU ? 1 : 0) - (kk.KeyO ? 1 : 0) + touchAxisR.x);
+    hR = spin ? clamp1((lamR - S.lR) * 4.5)
+      : clamp1((kk.KeyI ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.y);
+  }
+  let hL;
   if (spin) {
-    // blade depth follows the sweep automatically (like classic rowing oars)
-    const uL = Math.cos(S.aL), uR = Math.cos(S.aR);
+    const uL = Math.cos(S.aL);
     const dL = uL > 0 ? -0.52 * uL * uL : 0.55 * uL * uL;
-    const dR = uR > 0 ? -0.52 * uR * uR : 0.55 * uR * uR;
     const lamL = Math.asin(Math.max(-0.98, Math.min(0.98, dL)));
-    const lamR = Math.asin(Math.max(-0.98, Math.min(0.98, dR)));
     hL = clamp1((lamL - S.lL) * 4.5);
-    hR = clamp1((lamR - S.lR) * 4.5);
   } else {
     hL = clamp1((kk.KeyE ? 1 : 0) - (kk.KeyQ ? 1 : 0) + touchAxisL.y);
-    hR = clamp1((kk.KeyI ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.y);
   }
   S.aLv = oarAxisStep(S.aLv, kL, loadL, dt);
   S.aRv = oarAxisStep(S.aRv, kR, loadR, dt);
@@ -1330,29 +1371,33 @@ function makeRoomCode() {
 function showLobbyHost(code) {
   $('overlay').classList.remove('hidden');
   $('mpPanel').classList.add('show');
+  $('modeRow2').style.display = 'flex';
+  refreshLobby();
   $('mpCode').textContent = code;
-  $('mpStatus').textContent = 'waiting for rowers to join…';
-  $('btnBegin').disabled = true;
   $('btnBegin').style.display = '';
 }
 function showLobbyGuest() {
   $('overlay').classList.remove('hidden');
   $('mpPanel').classList.add('show');
   $('mpPanel').style.display = '';
+  $('modeRow2').style.display = 'none';
   $('mpCode').textContent = 'joined!';
-  $('mpStatus').textContent = `connected — ${controlStyle} controls (host's choice). Waiting for start…`;
+  $('mpStatus').textContent = 'waiting for the host to start the race…';
 }
 function showOverlayLobby() {
   $('overlay').classList.remove('hidden');
 }
 
+function teamPlan() {
+  const ids = [0, ...net.conns.filter(c => c.open).map(c => c._gid)];
+  return [[ids[0], ids[1]], [ids[2], ids[3]]];
+}
+
 function countdownStart() {
   $('overlay').classList.add('hidden');
   $('btnBegin').disabled = true;
-  const N = net.playerCount();
-  for (const c of net.conns) {
-    if (c.open) c.send({ t: 'goLane', lane: laneX(c._gid, N) });
-  }
+  const duo = lobbyMode === 'duo' && net.playerCount() === 4;
+  const teams = duo ? teamPlan() : null;
   let n = 5;
   const tick = () => {
     if (n > 0) {
@@ -1364,13 +1409,39 @@ function countdownStart() {
     } else {
       const seed = raceSeed = (Date.now() % 1000000000) | 0;
       for (const c of net.conns) {
-        if (c.open) c.send({ t: 'go', seed, lane: laneX(c._gid, N) });
+        if (!c.open) continue;
+        c.send({ t: 'go', seed, lane: laneFor(c._gid, duo, teams), teams, duo });
       }
-      A.goBoop();
-      beginRace(seed, laneX(0, N));
+      beginPlan(seed, laneFor(0, duo, teams), duo ? teams : null);
     }
   };
   tick();
+}
+
+function laneFor(gid, duo, teams) {
+  if (duo && teams) {
+    const idx = Math.max(0, teams.findIndex(t => t.includes(gid)));
+    return laneX(idx, teams.length);
+  }
+  return laneX(gid, net.playerCount());
+}
+
+function beginPlan(seed, lane, teams) {
+  beginRace(seed, lane);
+  if (teams && teams.length === 2) setDuoRoles(teams);
+  A.goBoop();
+}
+
+/* partner right-oar input */
+function partnerAxes() {
+  const kk = raceActive ? keys : EMPTY;
+  const spin = controlStyle === 'spin';
+  return {
+    a: spin
+      ? clamp1((kk.KeyO ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.x)
+      : clamp1((kk.KeyU ? 1 : 0) - (kk.KeyO ? 1 : 0) + touchAxisR.x),
+    h: spin ? 0 : clamp1((kk.KeyI ? 1 : 0) - (kk.KeyP ? 1 : 0) + touchAxisR.y),
+  };
 }
 
 function onData(d, c) {
@@ -1380,6 +1451,7 @@ function onData(d, c) {
       break;
     case 's':
       if (net.mode === 'host' && c && c._gid != null) {
+        if (raceBoatIds && !raceBoatIds.includes(c._gid)) break;   // duo partners have no boat
         net.lastS.set(c._gid, { x: d.x, y: d.y, z: d.z, yaw: d.yw, roll: d.ro, pitch: d.pi, aL: d.aL, lL: d.lL, aR: d.aR, lR: d.lR, st: d.st || 0 });
       }
       break;
@@ -1400,8 +1472,20 @@ function onData(d, c) {
       A.beep(660, 0.12);
       break;
     case 'go':
-      A.goBoop();
-      beginRace(d.seed, d.lane);
+      beginPlan(d.seed, d.lane, Array.isArray(d.teams) && d.duo ? d.teams : null);
+      break;
+    case 'oin':
+      if (net.mode === 'host' && raceTeams) {
+        const team = raceTeams.find(t => t.includes(c && c._gid) && t[0] !== (c && c._gid));
+        const owner = team ? team[0] : -1;
+        if (owner === 0 || owner === net.myId) {
+          pairIn.a = Math.max(-1, Math.min(1, d.a || 0));
+          pairIn.h = Math.max(-1, Math.min(1, d.h || 0));
+        } else net.sendTo(owner, { t: 'oin', a: d.a, h: d.h });
+      } else if (duoMode && amOwner) {
+        pairIn.a = Math.max(-1, Math.min(1, d.a || 0));
+        pairIn.h = Math.max(-1, Math.min(1, d.h || 0));
+      }
       break;
     case 'r':
       applyRemoteStates(d.d);
@@ -1474,6 +1558,21 @@ function raceOver(seconds = 5) {
   endRaceSoon(seconds);
 }
 
+function refreshLobby() {
+  const n = net.playerCount();
+  $('btnModeSolo').classList.toggle('active', lobbyMode === 'solo');
+  $('btnModeDuo').classList.toggle('active', lobbyMode === 'duo');
+  const ok = lobbyMode === 'duo' ? n === 4 : n >= 2;
+  if (ok) {
+    $('mpStatus').textContent = `${n} rowers ready — ${lobbyMode === 'duo' ? '2v2 teams lock at BEGIN' : 'press BEGIN when everyone\'s in'}`;
+  } else if (lobbyMode === 'duo') {
+    $('mpStatus').textContent = `${n}/4 rowers — 2v2 needs exactly four`;
+  } else {
+    $('mpStatus').textContent = 'waiting for rowers to join… (any number can race!)';
+  }
+  $('btnBegin').disabled = !(net.mode === 'host' && net.connected() && ok);
+}
+
 function hostGame() {
   if (!window.Peer) { showLobbyError('PeerJS failed to load — check your connection'); return; }
   const code = makeRoomCode();
@@ -1482,16 +1581,7 @@ function hostGame() {
   showLobbyHost(code);
   const peer = new Peer('rowp-' + code);
   net.peer = peer;
-  const refresh = () => {
-    const n = net.playerCount();
-    if (n >= 2) {
-      $('mpStatus').textContent = `${n} rowers ready — press BEGIN when everyone's in`;
-      $('btnBegin').disabled = false;
-    } else {
-      $('mpStatus').textContent = 'waiting for rowers to join… (any number can race!)';
-      $('btnBegin').disabled = true;
-    }
-  };
+  const refresh = refreshLobby;
   peer.on('open', refresh);
   peer.on('connection', c => {
     if (net.conns.length >= 5) { c.close(); return; }
@@ -1556,7 +1646,12 @@ function netFrame(dt) {
       sendT -= dt;
       if (sendT <= 0) {
         sendT = 0.075;
-        net.send({ t: 's', ...selfState() });
+        if (duoMode && !amOwner) {
+          const o = partnerAxes();
+          net.send({ t: 'oin', a: +o.a.toFixed(3), h: +o.h.toFixed(3) });
+        } else {
+          net.send({ t: 's', ...selfState() });
+        }
       }
     }
     return;
@@ -1565,8 +1660,10 @@ function netFrame(dt) {
   sendT -= dt;
   if (sendT <= 0) {
     sendT = 0.075;
-    const list = [{ id: 0, ...selfState() }];
+    const list = [];
+    if (!duoMode || amOwner) list.push({ id: 0, ...selfState() });
     for (const [gid, st] of net.lastS) {
+      if (raceBoatIds && !raceBoatIds.includes(gid)) continue;
       list.push({ id: gid, x: st.x, y: st.y, z: st.z, yw: st.yaw, ro: st.roll, pi: st.pitch, aL: st.aL, lL: st.lL, aR: st.aR, lR: st.lR, st: st.st });
     }
     net.broadcast({ t: 'r', d: list });
@@ -1601,6 +1698,8 @@ function initUIMulti() {
     joinGame(code);
   };
   $('btnBegin').onclick = () => { if (net.connected() && net.mode === 'host') countdownStart(); };
+  $('btnModeSolo').onclick = () => { lobbyMode = 'solo'; refreshLobby(); };
+  $('btnModeDuo').onclick = () => { lobbyMode = 'duo'; refreshLobby(); };
 }
 
 /* ============================================================
@@ -1611,10 +1710,16 @@ const camPos = new THREE.Vector3(0, 3.4, -8);
 const desired = new THREE.Vector3();
 const look = new THREE.Vector3();
 
+function myBoatState() {
+  if (duoMode && !amOwner && remotes.has(boatOwnerGid)) return remotes.get(boatOwnerGid).cur;
+  return { x: S.x, y: S.y, z: S.z, yaw: S.yaw, pitch: S.pitch, roll: S.roll };
+}
+
 function updateCamera(dt) {
-  const fx = Math.sin(S.yaw), fz = Math.cos(S.yaw);
+  const b = myBoatState();
+  const fx = Math.sin(b.yaw), fz = Math.cos(b.yaw);
   let camDist = 7.5, camH = 3.4;
-  const lookPt = { x: S.x + fx * 4, z: S.z + fz * 4, h: 0.6 };
+  const lookPt = { x: b.x + fx * 4, z: b.z + fz * 4, h: 0.6 };
   const nr = nearestRemote();
   if (nr.r && raceActive && nr.d < 26) {
     const w = (1 - nr.d / 26) * 0.6;
@@ -1623,7 +1728,7 @@ function updateCamera(dt) {
     camDist += w * 2.2;
     camH += w * 0.7;
   }
-  desired.set(S.x - fx * camDist, S.y + camH, S.z - fz * camDist);
+  desired.set(b.x - fx * camDist, b.y + camH, b.z - fz * camDist);
   camPos.lerp(desired, Math.min(1, 3.5 * dt));
   camera.position.copy(camPos);
   if (camShake > 0) {
@@ -1632,14 +1737,14 @@ function updateCamera(dt) {
     camera.position.y += (Math.random() - 0.5) * camShake * 0.4;
     camera.position.z += (Math.random() - 0.5) * camShake * 0.5;
   }
-  look.set(lookPt.x, S.y + lookPt.h, lookPt.z);
+  look.set(lookPt.x, b.y + lookPt.h, lookPt.z);
   camTarget.lerp(look, Math.min(1, 5 * dt));
   camera.lookAt(camTarget);
 
   if (raceActive && nr.r && nr.d > 18) {
-    const dOppX = nr.r.cur.x - S.x, dOppZ = nr.r.cur.z - S.z;
+    const dOppX = nr.r.cur.x - b.x, dOppZ = nr.r.cur.z - b.z;
     const fwdComp = dOppX * fx + dOppZ * fz;
-    const sideComp = dOppX * Math.cos(S.yaw) - dOppZ * Math.sin(S.yaw);
+    const sideComp = dOppX * Math.cos(b.yaw) - dOppZ * Math.sin(b.yaw);
     const ang = Math.atan2(sideComp, fwdComp);
     $('oppArrow').style.display = 'block';
     $('oppArrow').style.transform = `translate(-50%,-50%) rotate(${ang * 180 / Math.PI}deg)`;
@@ -1773,11 +1878,12 @@ function loop(now) {
   const dt = Math.min((now - last) / 1000, 1 / 20);
   last = now;
 
-  started = raceActive;
+  started = raceActive && (!duoMode || amOwner);
   if (started) {
     const sub = Math.max(1, Math.ceil(dt / (1 / 120)));
     for (let i = 0; i < sub; i++) step(dt / sub);
   }
+  if (duoMode && !amOwner && rigL.boat.visible) rigL.boat.visible = false;
 
   if (endTimer >= 0) {
     endTimer -= dt;
@@ -1838,16 +1944,23 @@ function loop(now) {
 
   updateCamera(dt);
 
-  $('dist').innerHTML = `${Math.max(0, S.z).toFixed(1)}<small> / ${GOAL} m</small>`;
-  $('time').textContent = `${S.t.toFixed(2)} s`;
-  $('stroke').textContent = `${S.strokes} strokes · heading ${(S.yaw * 180 / Math.PI).toFixed(0)}° · ${weatherName}`;
+  const mv = myBoatState();
+  $('dist').innerHTML = `${Math.max(0, mv.z).toFixed(1)}<small> / ${GOAL} m</small>`;
+  $('time').textContent = `${(duoMode && !amOwner ? S.t - (S.t0 || 0) : S.t).toFixed(2)} s`;
+  $('stroke').textContent = `${S.strokes} strokes · heading ${(mv.yaw * 180 / Math.PI).toFixed(0)}° · ${weatherName}`;
   $('pb').textContent = pb ? `PB: ${pb.toFixed(2)}s` : '';
   if (net.mode === 'guest' || net.mode === 'host') {
     const lines = [];
-    let shown = 0;
     for (const r of remotes.values()) {
       if (!r.active || lines.length >= 5) continue;
-      lines.push(`Racer ${r.gid}: ${Math.max(0, r.cur.z).toFixed(1)} m · ${r.cur.strokes} strokes`);
+      if (duoMode && r.gid === boatOwnerGid) {
+        lines.push(`Your boat: ${Math.max(0, r.cur.z).toFixed(1)} m · ${r.cur.strokes} strokes`);
+      } else {
+        lines.push(`Racer ${r.gid}: ${Math.max(0, r.cur.z).toFixed(1)} m · ${r.cur.strokes} strokes`);
+      }
+    }
+    if (duoMode && !amOwner) {
+      lines.unshift(`You are on the RIGHT oar — your partner steers the boat!`);
     }
     if (lines.length) {
       $('opp').style.display = 'block';
