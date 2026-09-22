@@ -1681,8 +1681,15 @@ function applyRemoteStates(list) {
     if (!r.active) {
       for (const k in r.cur) r.cur[k] = r.tgt[k];
       r.active = true;
+      r.rig.boat.visible = true;
     }
   }
+  remotes.forEach((r, gid) => {
+    if (raceBoatIds && !raceBoatIds.includes(gid)) {
+      r.active = false;
+      if (r.rig) r.rig.boat.visible = false;
+    }
+  });
 }
 
 function initUIMulti() {
@@ -1881,7 +1888,13 @@ window.rowp = {
     const rv = duoMode && remotes.has(boatOwnerGid) ? remotes.get(boatOwnerGid).cur : null;
     return { duoMode, amOwner, boatOwnerGid, partnerGid, myId: net.myId, raceActive, strokes: S.strokes, pos: { x: S.x, z: S.z }, view: { z: myBoatState().z, x: myBoatState().x } };
   },
+  boats: () => {
+    const rigs = [...remotes.values()].filter(r => r.active && r.rig && r.rig.boat.visible).map(r => r.gid);
+    const mine = rigL.boat.visible ? 1 : 0;
+    return `mine=${mine} remotes=` + rigs.join(',');
+  },
   keys: k => { keys[k] = true; },
+  unkey: k => { keys[k] = false; },
   hud: () => ({ dist: document.getElementById('dist').textContent, opp: document.getElementById('opp').textContent }),
 };
   const dt = Math.min((now - last) / 1000, 1 / 20);
