@@ -1874,7 +1874,16 @@ function collide(dt) {
 }
 
 function loop(now) {
-  requestAnimationFrame(loop);
+requestAnimationFrame(loop);
+
+window.rowp = {
+  duo: () => {
+    const rv = duoMode && remotes.has(boatOwnerGid) ? remotes.get(boatOwnerGid).cur : null;
+    return { duoMode, amOwner, boatOwnerGid, partnerGid, myId: net.myId, raceActive, strokes: S.strokes, pos: { x: S.x, z: S.z }, view: { z: myBoatState().z, x: myBoatState().x } };
+  },
+  keys: k => { keys[k] = true; },
+  hud: () => ({ dist: document.getElementById('dist').textContent, opp: document.getElementById('opp').textContent }),
+};
   const dt = Math.min((now - last) / 1000, 1 / 20);
   last = now;
 
