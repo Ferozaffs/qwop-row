@@ -1904,6 +1904,8 @@ window.rowp = {
   if (started) {
     const sub = Math.max(1, Math.ceil(dt / (1 / 120)));
     for (let i = 0; i < sub; i++) step(dt / sub);
+  } else if (raceActive && duoMode && !amOwner) {
+    S.t += dt;   // partners don't simulate but keep their race clock alive
   }
   if (duoMode && !amOwner && rigL.boat.visible) rigL.boat.visible = false;
 
@@ -1968,7 +1970,7 @@ window.rowp = {
 
   const mv = myBoatState();
   $('dist').innerHTML = `${Math.max(0, mv.z).toFixed(1)}<small> / ${GOAL} m</small>`;
-  $('time').textContent = `${(duoMode && !amOwner ? S.t - (S.t0 || 0) : S.t).toFixed(2)} s`;
+  $('time').textContent = `${S.t.toFixed(2)} s`;
   $('stroke').textContent = `${S.strokes} strokes · heading ${(mv.yaw * 180 / Math.PI).toFixed(0)}° · ${weatherName}`;
   $('pb').textContent = pb ? `PB: ${pb.toFixed(2)}s` : '';
   if (net.mode === 'guest' || net.mode === 'host') {
