@@ -1744,7 +1744,10 @@ const desired = new THREE.Vector3();
 const look = new THREE.Vector3();
 
 function myBoatState() {
-  if (duoMode && !amOwner && remotes.has(boatOwnerGid)) return remotes.get(boatOwnerGid).cur;
+  if (duoMode && !amOwner && remotes.has(boatOwnerGid)) {
+    const r = remotes.get(boatOwnerGid);
+    return { x: r.tgt.x, y: r.tgt.y, z: r.tgt.z, yaw: r.tgt.yaw, pitch: r.tgt.pitch, roll: r.tgt.roll };
+  }
   return { x: S.x, y: S.y, z: S.z, yaw: S.yaw, pitch: S.pitch, roll: S.roll };
 }
 
@@ -1793,7 +1796,7 @@ function updateRemoteBoats(dt) {
   for (const r of remotes.values()) {
     if (!r.active || !r.rig) continue;
     const c = r.cur, t = r.tgt;
-    const k = Math.min(1, dt * 8);
+    const k = Math.min(1, dt * 12);
     c.x += (t.x - c.x) * k; c.y += (t.y - c.y) * k; c.z += (t.z - c.z) * k;
     c.yaw += (t.yaw - c.yaw) * k; c.roll += (t.roll - c.roll) * k; c.pitch += (t.pitch - c.pitch) * k;
     c.aL += (t.aL - c.aL) * k; c.aR += (t.aR - c.aR) * k;
@@ -1953,7 +1956,7 @@ window.rowp = {
 
   water.position.x = S.x;
   water.position.z = S.z;
-  waterUniforms.uTime.value = started ? S.t : now / 1000;
+  waterUniforms.uTime.value = raceActive ? S.t : now / 1000;
   waterUniforms.uAmp.value = weatherMul;
   const wT = Math.max(0, Math.min(1, (weatherMul - 0.55) / 4.45));
   scene.background.set(0x87b8d8).lerp(new THREE.Color(0x40525c), wT);
