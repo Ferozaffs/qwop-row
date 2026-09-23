@@ -887,6 +887,7 @@ const S = {
   finished: false, finishedTime: 0, capsized: false,
   missedGate: false,
   strokes: 0,
+  autoL: 0, autoR: 0,
 };
 
 const OAR_RATE = 4.2;
@@ -944,7 +945,6 @@ let partnerGid = -1;          // duo: gid of my same-boat partner
 let raceBoatIds = null;       // duo: owner gids that actually represent boats
 let raceTeams = null;         // duo: [[ownerA, partnerA], [ownerB, partnerB]]
 const pairIn = { a: 0, h: 0 };// duo: partner's right-oar axes received live
-
 function laneX(idx, n) {
   const off = idx - (n - 1) / 2;
   return off * 2.6 + (idx % 2 === 0 ? 0 : 1.3);
@@ -956,6 +956,7 @@ function resetState() {
     yaw: 0, yawVel: 0, roll: 0, rollVel: 0, pitch: 0, pitchVel: 0,
     aL: -0.9, aLv: 0, lL: -0.3, lLv: 0, aR: -0.9, aRv: 0, lR: -0.3, lRv: 0,
     finished: false, finishedTime: 0, capsized: false, missedGate: false, strokes: 0,
+    autoL: 0, autoR: 0,
   });
   tipsInit = false;
   oppFin = null;
@@ -1023,7 +1024,7 @@ function setControlStyle(style) {
     : '<b>Q</b> dunk &nbsp; <b>W</b> fwd swing &nbsp; <b>E</b> lift &nbsp; <b>R</b> pull &nbsp;|&nbsp; right oar: <b>P</b> dunk <b>U</b> pull <b>I</b> lift <b>O</b> fwd';
   $('ctrlDesc').innerHTML = style === 'spin'
     ? 'Classic rowing: press <b>Q</b>/<b>W</b> to spin the left oar, <b>O</b>/<b>P</b> for the right. The blade dips and lifts itself as it rotates — find the power arc, avoid the backwater. Mines, seagulls and waves do the rest.'
-    : 'One stroke per oar: <b>Q</b> dunk the blade, <b>R</b> pull it aft through the water, <b>E</b> lift it out, <b>W</b> swing it forward — repeat. Right oar: <b>P</b>, <b>U</b>, <b>I</b>, <b>O</b>. Sweep is limited to ±90°; timing the phases is the game. Mines, seagulls and waves do the rest.';
+    : 'One stroke per oar: <b>Q</b> dunk the blade, <b>R</b> pull it aft, <b>E</b> lift it out, <b>W</b> swing it forward — or simply <b>HOLD R</b> and the oar runs the whole circle for you (right oar: hold <b>U</b>). Timing the phases beats just holding, though. Mines, seagulls and waves do the rest.';
   updateKeysHud();
 }
 
@@ -1032,6 +1033,12 @@ function updateKeysHud() {
     ? `<span class="lbl">LEFT OAR</span> <b>Q</b>/<b>W</b> spin&nbsp;&nbsp;|&nbsp;&nbsp;<span class="lbl">RIGHT OAR</span> <b>O</b>/<b>P</b> spin&nbsp;&nbsp;|&nbsp;&nbsp;<b>M</b> music`
     : `<span class="lbl">LEFT OAR</span> <b>Q</b>dunk <b>R</b>pull <b>E</b>lift <b>W</b>fwd&nbsp;&nbsp;|&nbsp;&nbsp;<span class="lbl">RIGHT OAR</span> <b>P</b>dunk <b>U</b>pull <b>I</b>lift <b>O</b>fwd&nbsp;&nbsp;|&nbsp;&nbsp;<b>M</b> music`;
 }
+window.rowpdebug = {
+  setStyle: s => setControlStyle(s),
+  style: () => controlStyle,
+  pair: () => pairIn,
+  oarR: () => ({ a: S.aR, l: S.lR, v: S.aRv, lv: S.lRv }),
+};
 
 function initStyleUI() {
   $('btnStyleSpin').onclick = () => setControlStyle('spin');
@@ -1152,7 +1159,7 @@ function step(dt) {
   }
   const kk = raceActive ? keys : EMPTY;
   const spin = controlStyle === 'spin';
-  const kL = spin
+  let kL = spin
     ? clamp1((kk.KeyW ? 1 : 0) - (kk.KeyQ ? 1 : 0) + touchAxisL.x)
     : clamp1((kk.KeyR ? 1 : 0) - (kk.KeyW ? 1 : 0) + touchAxisL.x);
   const uR_ = Math.cos(S.aR);
@@ -1176,6 +1183,25 @@ function step(dt) {
     hL = clamp1((lamL - S.lL) * 4.5);
   } else {
     hL = clamp1((kk.KeyE ? 1 : 0) - (kk.KeyQ ? 1 : 0) + touchAxisL.y);
+  }
+
+  if (!spin) {
+    // Holding the pull key runs a full automatic stroke cycle: pull to the aft
+    // stop, lift, swing forward, dunk, repeat. Manually pressing the other keys
+    // seizes the automaton.
+    const pullHeldL = kk.KeyR, fwdHeldL = kk.KeyW;
+    if (!pullHeldL) S.autoL = 0;
+    else if (S.autoL === 0 && S.aL >= SWEEP_MAX - 0.04 && S.lL < 0.2) S.autoL = 1;
+    if (S.autoL === 1) { hL = 1; kL = 0; if (S.lL > 0.85) S.autoL = 2; }
+    else if (S.autoL === 2) { hL = 0; kL = -1; if (kk.KeyW) S.autoL = 0; else if (S.aL <= SWEEP_MIN + 0.04) S.autoL = 3; }
+    else if (S.autoL === 3) { hL = -1; kL = 0; if (S.lL < LIFT_MIN + 0.15) S.autoL = 0; }
+    const pullHeldR_ = (duoMode && amOwner && partnerGid >= 0) ? pairIn.a > 0.4 : kk.KeyU;
+    const fwdHeldR_ = (duoMode && amOwner && partnerGid >= 0) ? pairIn.a < -0.4 : kk.KeyO;
+    if (!pullHeldR_) { S.autoR = 0; }
+    else if (S.autoR === 0 && S.aR >= SWEEP_MAX - 0.04 && S.lR < 0.85) S.autoR = 1;
+    if (S.autoR === 1) { hR = 1; kR = 0; if (S.lR > 0.85) S.autoR = 2; }
+    else if (S.autoR === 2) { hR = 0; kR = -1; if (fwdHeldR_) S.autoR = 0; else if (S.aR <= SWEEP_MIN + 0.04) S.autoR = 3; }
+    else if (S.autoR === 3) { hR = -1; kR = 0; if (S.lR < LIFT_MIN + 0.15) S.autoR = 0; }
   }
   S.aLv = oarAxisStep(S.aLv, kL, loadL, dt);
   S.aRv = oarAxisStep(S.aRv, kR, loadR, dt);
